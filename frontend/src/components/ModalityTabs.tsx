@@ -1,4 +1,4 @@
-import { AudioLines, FileText, Image as ImageIcon, Video } from 'lucide-react';
+import { AudioLines, FileText, Image as ImageIcon, Video, Link2 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { Modality } from '../types/detector';
 
@@ -19,6 +19,7 @@ const TABS: TabItem[] = [
   { id: 'image', label: 'Image', icon: ImageIcon },
   { id: 'audio', label: 'Audio', icon: AudioLines },
   { id: 'video', label: 'Video', icon: Video },
+  { id: 'url', label: 'URL', icon: Link2 },
 ];
 
 export function ModalityTabs({
@@ -31,7 +32,7 @@ export function ModalityTabs({
       <nav
         aria-label="Content Modality"
         role="tablist"
-        className="grid w-full max-w-xl grid-cols-2 gap-1.5 rounded-2xl border border-slate-800/80 bg-slate-900/70 p-1.5 backdrop-blur-xl sm:grid-cols-4"
+        className="grid w-full max-w-xl grid-cols-2 gap-1.5 rounded-2xl border border-slate-800/80 bg-slate-900/70 p-1.5 backdrop-blur-xl sm:grid-cols-5"
       >
         {TABS.map((tab) => {
           const Icon = tab.icon;
