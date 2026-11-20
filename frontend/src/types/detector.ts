@@ -17,6 +17,10 @@ export interface DetectionResult extends DetectionApiResponse {
   redirectCount?: number;
   reasons?: string[];
   checks?: Array<{ name: string; status: string; detail: string }>;
+  modelId?: string;
+  audioDurationSeconds?: number;
+  sampleRate?: number;
+  audioProbabilities?: { fake: number; real: number };
 }
 
 export type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error';
