@@ -1,4 +1,3 @@
-import { Client } from '@gradio/client';
 import { API_ENDPOINTS, isLiveEndpointConfigured } from '../config/api';
 import type {
   DetectionApiResponse,
@@ -14,7 +13,6 @@ export interface AnalyzeRequest {
 }
 
 const DEMO_DELAY_MS = 1500;
-const gradioClients = new Map<string, ReturnType<typeof Client.connect>>();
 
 function computeConfidenceLevel(probability: number): 'High' | 'Moderate' | 'Low' {
   const distanceFromThreshold = Math.abs(probability - 0.5);
@@ -126,28 +124,21 @@ function validateApiResponse(payload: unknown): DetectionApiResponse {
   return { ai_probability: aiProbability, is_ai_generated: isAiGenerated, label };
 }
 
-async function analyzeTextWithGradio(spaceUrl: string, text: string): Promise<DetectionApiResponse> {
-  const legacySuffix = '/detect-text';
-  let spaceBaseUrl = spaceUrl.endsWith(legacySuffix)
-    ? spaceUrl.slice(0, -legacySuffix.length)
-    : spaceUrl;
-  if (spaceBaseUrl.endsWith('/')) spaceBaseUrl = spaceBaseUrl.slice(0, -1);
-  let clientPromise = gradioClients.get(spaceBaseUrl);
-  if (!clientPromise) {
-    clientPromise = Client.connect(spaceBaseUrl);
-    gradioClients.set(spaceBaseUrl, clientPromise);
-  }
-
+async function readApiError(response: Response): Promise<string> {
+  let detail = `HTTP ${response.status} ${response.statusText}`;
   try {
-    const client = await clientPromise;
-    const result = await client.predict('/detect_text', [text]);
-    const output = (result.data as unknown[] | undefined)?.[0];
-    return validateApiResponse(output);
-  } catch (error) {
-    gradioClients.delete(spaceBaseUrl);
-    const message = error instanceof Error ? error.message : 'Unknown Gradio API error.';
-    throw new Error(`Hugging Face text detector failed: ${message}`);
+    const body = (await response.json()) as {
+      detail?: string | { message?: string };
+      error?: string;
+      message?: string;
+    };
+    if (typeof body.detail === 'string') detail = body.detail;
+    else if (body.detail?.message) detail = body.detail.message;
+    else detail = body.error || body.message || detail;
+  } catch {
+    // Keep the HTTP status when the endpoint does not return JSON.
   }
+  return detail;
 }
 
 export async function analyzeContent({
@@ -157,8 +148,7 @@ export async function analyzeContent({
   demoMode,
 }: AnalyzeRequest): Promise<DetectionResult> {
   if (modality === 'text') {
-    const trimmed = text?.trim() ?? '';
-    if (!trimmed) {
+    if (!text?.trim()) {
       throw new Error('Please enter or paste some text before running analysis.');
     }
   } else if (!file) {
@@ -182,41 +172,37 @@ export async function analyzeContent({
 
   if (!isLiveEndpointConfigured(modality)) {
     throw new Error(
-      `No live ${modality.toUpperCase()} API URL is configured. Set VITE_${modality.toUpperCase()}_API_URL in Vercel or enable Demo Mode.`
+      `No live ${modality.toUpperCase()} API URL is configured. Set VITE_${modality.toUpperCase()}_API_URL in the deployment environment or enable Demo Mode.`
     );
   }
 
   const endpoint = API_ENDPOINTS[modality];
-  let parsed: DetectionApiResponse;
+  let response: Response;
 
-  if (modality === 'text') {
-    parsed = await analyzeTextWithGradio(endpoint, text?.trim() ?? '');
-  } else {
-    let response: Response;
-    try {
+  try {
+    if (modality === 'text') {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text?.trim() ?? '' }),
+      });
+    } else {
       const formData = new FormData();
       formData.append('file', file as File);
       response = await fetch(endpoint, { method: 'POST', body: formData });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Network error while reaching the detection API.';
-      throw new Error(`Connection failed: ${message}`);
     }
-
-    if (!response.ok) {
-      let errorDetail = `HTTP ${response.status} ${response.statusText}`;
-      try {
-        const errBody = (await response.json()) as { detail?: string; error?: string; message?: string };
-        errorDetail = errBody.detail || errBody.error || errBody.message || errorDetail;
-      } catch {
-        // Keep the HTTP status when the endpoint does not return JSON.
-      }
-      throw new Error(`Detection endpoint returned an error: ${errorDetail}`);
-    }
-
-    parsed = validateApiResponse(await response.json());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Network error while reaching the detection API.';
+    throw new Error(`Connection failed: ${message}`);
   }
 
+  if (!response.ok) {
+    throw new Error(`Detection endpoint returned an error: ${await readApiError(response)}`);
+  }
+
+  const parsed = validateApiResponse(await response.json());
   const processingTimeMs = Math.round(performance.now() - startedAt);
+
   return {
     ...parsed,
     modality,
