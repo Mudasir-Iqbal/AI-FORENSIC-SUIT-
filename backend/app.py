@@ -1,76 +1,140 @@
+import logging
+import os
 import time
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from contextlib import asynccontextmanager
+from typing import Any
+
 import torch
 import torch.nn as nn
-from transformers import AutoTokenizer, AutoConfig, AutoModel, PreTrainedModel
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, field_validator
+from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
 
-MODEL_ID = "desklib/ai-text-detector-v1.01"
-MAX_LEN = 512
-THRESHOLD = 0.5
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 
+MODEL_ID = os.getenv("TEXT_MODEL_ID", "desklib/ai-text-detector-v1.01")
+MAX_LEN = int(os.getenv("TEXT_MAX_LENGTH", "512"))
+MAX_TEXT_CHARS = int(os.getenv("MAX_TEXT_CHARS", "20000"))
+THRESHOLD = float(os.getenv("TEXT_AI_THRESHOLD", "0.5"))
+
+# Set FRONTEND_ORIGINS to comma-separated production origins.
+# Local development origins are included by default.
+DEFAULT_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGINS", DEFAULT_ORIGINS).split(",")
+    if origin.strip()
+]
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
+logger = logging.getLogger("deepguard.api")
+
+
+# ---------------------------------------------------------------------------
+# Model architecture
+# Keep this architecture aligned with the checkpoint's original training code.
+# A successful import does not prove that the checkpoint weights are compatible.
+# ---------------------------------------------------------------------------
 
 class DesklibAIDetectionModel(PreTrainedModel):
     config_class = AutoConfig
+    base_model_prefix = "model"
 
-    def __init__(self, config):
+    def __init__(self, config: Any):
         super().__init__(config)
         self.model = AutoModel.from_config(config)
         self.classifier = nn.Linear(config.hidden_size, 1)
-        self.init_weights()
+        self.post_init()
 
-    def forward(self, input_ids, attention_mask=None, labels=None):
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor | None = None,
+    ) -> dict[str, torch.Tensor]:
         outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
-        last_hidden_state = outputs[0]
+        hidden_states = outputs.last_hidden_state
 
         if attention_mask is None:
-            pooled_output = last_hidden_state.mean(dim=1)
+            pooled = hidden_states.mean(dim=1)
         else:
-            input_mask_expanded = (
-                attention_mask.unsqueeze(-1)
-                .expand(last_hidden_state.size())
-                .to(last_hidden_state.dtype)
-            )
-            sum_embeddings = torch.sum(last_hidden_state * input_mask_expanded, dim=1)
-            sum_mask = torch.clamp(input_mask_expanded.sum(dim=1), min=1e-9)
-            pooled_output = sum_embeddings / sum_mask
+            mask = attention_mask.unsqueeze(-1).to(hidden_states.dtype)
+            pooled = (hidden_states * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
 
-        logits = self.classifier(pooled_output)
-        loss = None
-        if labels is not None:
-            loss_fct = nn.BCEWithLogitsLoss()
-            loss = loss_fct(logits.view(-1), labels.float())
-
-        return {"logits": logits, "loss": loss}
+        return {"logits": self.classifier(pooled)}
 
 
-app = FastAPI(title="DeepGuard Backend API")
+# ---------------------------------------------------------------------------
+# Application lifecycle
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.model = None
+    app.state.tokenizer = None
+    app.state.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    app.state.model_status = "loading"
+
+    try:
+        logger.info("Loading text detector: %s", MODEL_ID)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        model = DesklibAIDetectionModel.from_pretrained(MODEL_ID)
+        model.to(app.state.device)
+        model.eval()
+
+        app.state.tokenizer = tokenizer
+        app.state.model = model
+        app.state.model_status = "ready"
+        logger.info("Text detector loaded on %s", app.state.device)
+    except Exception:
+        app.state.model_status = "error"
+        logger.exception("Failed to load text detector")
+        # Keep the API alive so /health can report the failure and return 503
+        # for inference requests. Do not return fabricated/demo predictions.
+
+    yield
+
+    app.state.model = None
+    app.state.tokenizer = None
+    if app.state.device.type == "cuda":
+        torch.cuda.empty_cache()
+    logger.info("Application shutdown complete")
+
+
+app = FastAPI(
+    title="DeepGuard Backend API",
+    version="0.2.0",
+    description="Model-backed multimodal content verification API.",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-tokenizer = None
-model = None
 
-
-@app.on_event("startup")
-def load_model():
-    global tokenizer, model
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-    model = DesklibAIDetectionModel.from_pretrained(MODEL_ID)
-    model.to(device)
-    model.eval()
-
+# ---------------------------------------------------------------------------
+# API schemas
+# ---------------------------------------------------------------------------
 
 class TextDetectRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=20000)
+    text: str = Field(..., min_length=1, max_length=MAX_TEXT_CHARS)
+
+    @field_validator("text")
+    @classmethod
+    def text_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Text cannot be empty or whitespace only.")
+        return value
 
 
 class DetectResponse(BaseModel):
@@ -81,45 +145,72 @@ class DetectResponse(BaseModel):
     processing_time_ms: int
 
 
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+@app.get("/")
+def root() -> dict[str, str]:
+    return {"service": "DeepGuard Backend API", "docs": "/docs"}
+
+
 @app.get("/health")
-def health_check():
+def health_check(request: Request) -> dict[str, str | bool]:
+    model_loaded = request.app.state.model is not None
     return {
-        "status": "ok",
-        "model_loaded": model is not None,
-        "device": str(device),
+        "status": "ok" if model_loaded else request.app.state.model_status,
+        "model_loaded": model_loaded,
+        "device": str(request.app.state.device),
+        "model_id": MODEL_ID,
     }
 
 
 @app.post("/detect-text", response_model=DetectResponse)
-def detect_text(req: TextDetectRequest):
+def detect_text(req: TextDetectRequest, request: Request) -> DetectResponse:
+    model = request.app.state.model
+    tokenizer = request.app.state.tokenizer
+
     if model is None or tokenizer is None:
-        raise HTTPException(status_code=503, detail="Model is still loading")
+        raise HTTPException(
+            status_code=503,
+            detail="Text detection model is unavailable. Check the /health endpoint.",
+        )
 
     clean_text = req.text.strip()
-    if not clean_text:
-        raise HTTPException(status_code=400, detail="Text cannot be empty")
-
     start = time.perf_counter()
 
-    encoded = tokenizer(
-        clean_text,
-        padding="max_length",
-        truncation=True,
-        max_length=MAX_LEN,
-        return_tensors="pt",
-    )
-    input_ids = encoded["input_ids"].to(device)
-    attention_mask = encoded["attention_mask"].to(device)
+    try:
+        # Dynamic padding avoids padding every short input to the full 512 tokens.
+        encoded = tokenizer(
+            clean_text,
+            padding=True,
+            truncation=True,
+            max_length=MAX_LEN,
+            return_tensors="pt",
+        )
+        encoded = {key: value.to(request.app.state.device) for key, value in encoded.items()}
 
-    with torch.no_grad():
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        prob = torch.sigmoid(outputs["logits"]).item()
+        with torch.inference_mode():
+            outputs = model(**encoded)
+            probability = torch.sigmoid(outputs["logits"].reshape(-1)[0]).item()
 
-    elapsed_ms = int((time.perf_counter() - start) * 1000)
-    is_ai = prob >= THRESHOLD
+        if not 0.0 <= probability <= 1.0:
+            raise ValueError("Model returned an invalid probability.")
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Text inference failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Text inference failed. Check server logs for details.",
+        ) from exc
+
+    elapsed_ms = round((time.perf_counter() - start) * 1000)
+    is_ai = probability >= THRESHOLD
 
     return DetectResponse(
-        ai_probability=round(prob, 4),
+        ai_probability=round(probability, 4),
         is_ai_generated=is_ai,
         label="AI Generated" if is_ai else "Human Written",
         modality="text",
