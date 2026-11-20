@@ -1,4 +1,4 @@
-export type Modality = 'text' | 'image' | 'audio' | 'video';
+export type Modality = 'text' | 'image' | 'audio' | 'video' | 'url';
 
 export interface DetectionApiResponse {
   ai_probability: number;
@@ -11,6 +11,12 @@ export interface DetectionResult extends DetectionApiResponse {
   processingTimeMs: number;
   confidenceLevel: 'High' | 'Moderate' | 'Low';
   isDemo: boolean;
+  riskScore?: number;
+  finalUrl?: string | null;
+  httpStatus?: number | null;
+  redirectCount?: number;
+  reasons?: string[];
+  checks?: Array<{ name: string; status: string; detail: string }>;
 }
 
 export type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error';
