@@ -16,7 +16,10 @@ MAX_LEN = int(os.getenv("TEXT_MAX_LENGTH", "512"))
 MAX_TEXT_CHARS = int(os.getenv("MAX_TEXT_CHARS", "20000"))
 THRESHOLD = float(os.getenv("TEXT_AI_THRESHOLD", "0.5"))
 
-DEFAULT_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+DEFAULT_ORIGINS = (
+    "https://ai-forensic-suite-cyan.vercel.app,"
+    "http://localhost:5173,http://127.0.0.1:5173"
+)
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("FRONTEND_ORIGINS", DEFAULT_ORIGINS).split(",")
@@ -46,8 +49,6 @@ class DesklibAIDetectionModel(PreTrainedModel):
         attention_mask: torch.Tensor | None = None,
         token_type_ids: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
-        # DeBERTa-v2 tokenizers may return token_type_ids. Forward them to
-        # the backbone instead of rejecting them at this wrapper's boundary.
         model_inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
         if token_type_ids is not None:
             model_inputs["token_type_ids"] = token_type_ids
@@ -97,7 +98,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="DeepGuard Backend API",
-    version="0.2.1",
+    version="0.3.0",
     description="Model-backed multimodal content verification API.",
     lifespan=lifespan,
 )
