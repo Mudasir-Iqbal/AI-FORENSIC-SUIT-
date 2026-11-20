@@ -127,10 +127,11 @@ function validateApiResponse(payload: unknown): DetectionApiResponse {
 }
 
 async function analyzeTextWithGradio(spaceUrl: string, text: string): Promise<DetectionApiResponse> {
-  let clientPromise = gradioClients.get(spaceUrl);
+  const spaceBaseUrl = spaceUrl.replace(/\\/detect-text\\/?$/i, '').replace(/\\/+$/, '');
+  let clientPromise = gradioClients.get(spaceBaseUrl);
   if (!clientPromise) {
-    clientPromise = Client.connect(spaceUrl);
-    gradioClients.set(spaceUrl, clientPromise);
+    clientPromise = Client.connect(spaceBaseUrl);
+    gradioClients.set(spaceBaseUrl, clientPromise);
   }
 
   try {
@@ -139,7 +140,7 @@ async function analyzeTextWithGradio(spaceUrl: string, text: string): Promise<De
     const output = (result.data as unknown[] | undefined)?.[0];
     return validateApiResponse(output);
   } catch (error) {
-    gradioClients.delete(spaceUrl);
+    gradioClients.delete(spaceBaseUrl);
     const message = error instanceof Error ? error.message : 'Unknown Gradio API error.';
     throw new Error(`Hugging Face text detector failed: ${message}`);
   }
