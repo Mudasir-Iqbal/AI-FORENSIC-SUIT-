@@ -128,7 +128,7 @@ export function ResultCard({
                       result.is_ai_generated ? 'text-rose-200' : 'text-emerald-200'
                     }`}
                   >
-                    {result.modality === 'url' ? (result.is_ai_generated ? 'Potentially Suspicious' : 'No Major Indicators') : result.modality === 'audio' ? (result.is_ai_generated ? 'AI-Generated / Fake Audio' : 'Likely Real Audio') : (result.is_ai_generated ? 'AI Generated' : 'Human / Authentic')}
+                    {result.modality === 'url' ? (result.is_ai_generated ? 'Potentially Suspicious' : 'No Major Indicators') : result.modality === 'audio' ? (result.is_ai_generated ? 'AI-Generated / Fake Audio' : 'Likely Real Audio') : result.modality === 'image' ? (result.is_ai_generated ? 'AI-Generated Image' : 'Likely Real Image') : (result.is_ai_generated ? 'AI Generated' : 'Human / Authentic')}
                   </p>
                 </div>
               </div>
@@ -152,7 +152,7 @@ export function ResultCard({
             <div className="space-y-2.5">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm font-medium text-slate-300">
-                  {result.modality === 'url' ? 'URL Risk Score' : result.modality === 'audio' ? 'Fake Audio Probability' : 'AI Probability Score'}
+                  {result.modality === 'url' ? 'URL Risk Score' : result.modality === 'audio' ? 'Fake Audio Probability' : result.modality === 'image' ? 'AI Image Probability' : 'AI Probability Score'}
                 </span>
                 <span
                   className={`font-mono text-2xl font-bold tabular-nums ${
@@ -182,7 +182,7 @@ export function ResultCard({
               </div>
 
               <div className="flex justify-between text-xs text-slate-500 font-mono tabular-nums">
-                {result.modality === 'url' ? <><span>0% Low</span><span>40% Flag</span><span>100% High</span></> : <><span>0% Real</span><span>50% Threshold</span><span>100% Fake</span></>}
+                {result.modality === 'url' ? <><span>0% Low</span><span>40% Flag</span><span>100% High</span></> : <><span>0% Real</span><span>50% Threshold</span><span>100% AI</span></>}
               </div>
             </div>
 
@@ -212,6 +212,19 @@ export function ResultCard({
                 </p>
               </div>
             </div>
+
+            {result.modality === "image" && (
+              <div className="space-y-3 border-t border-slate-800/80 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Image Model Evidence</p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><p className="text-xs text-slate-400">Image Dimensions</p><p className="font-mono text-slate-100">{result.imageWidth && result.imageHeight ? `${result.imageWidth} × ${result.imageHeight}` : "N/A"}</p></div>
+                  <div><p className="text-xs text-slate-400">AI Probability</p><p className="font-mono text-rose-300">{result.imageProbabilities ? Math.round(result.imageProbabilities.ai * 100) + "%" : "N/A"}</p></div>
+                  <div><p className="text-xs text-slate-400">Real Probability</p><p className="font-mono text-emerald-300">{result.imageProbabilities ? Math.round(result.imageProbabilities.real * 100) + "%" : "N/A"}</p></div>
+                </div>
+                <p className="break-all text-xs text-slate-500">Model: {result.modelId ?? "Image model"}</p>
+                <p className="text-xs leading-relaxed text-slate-400">This classifier estimates whether an image resembles its training classes. New image generators, edits, screenshots, and heavy compression may affect results. Treat this as one forensic signal, not proof of authenticity.</p>
+              </div>
+            )}
 
             {result.modality === 'audio' && (
               <div className="space-y-3 border-t border-slate-800/80 pt-4">
