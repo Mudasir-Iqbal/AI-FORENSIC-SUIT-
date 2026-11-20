@@ -173,7 +173,10 @@ SUSPICIOUS_TLDS = {
 
 
 def _validate_public_url(value: str) -> tuple[str, str, int | None]:
-    parsed = urlsplit(value.strip())
+    cleaned = value.strip()
+    if "://" not in cleaned:
+        cleaned = "https://" + cleaned
+    parsed = urlsplit(cleaned)
     if parsed.scheme.lower() not in {"http", "https"}:
         raise ValueError("Only HTTP and HTTPS URLs are supported.")
     if not parsed.hostname:
@@ -285,7 +288,7 @@ async def detect_url(req: URLDetectRequest) -> URLDetectResponse:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, verify=True, headers={"User-Agent": "DeepGuard-URL-Inspector/1.0"}) as client:
             for hop in range(URL_MAX_REDIRECTS + 1):
                 safe_url, _, _ = _validate_public_url(current)
-                request = client.build_request("GET", safe_url, headers={"Range": "bytes=0-0"})
+                request = client.build_request("HEAD", safe_url)
                 response = await client.send(request, stream=True)
                 http_status = response.status_code
                 location = response.headers.get("location")
