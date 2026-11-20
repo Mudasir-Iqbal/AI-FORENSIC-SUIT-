@@ -51,7 +51,7 @@ export default function App() {
   };
 
   const handleSelectMediaFile = (
-    modality: Exclude<Modality, 'text'>,
+    modality: Exclude<Modality, 'text' | 'url'>,
     file: File | null
   ) => {
     setMediaFiles((prev) => ({
