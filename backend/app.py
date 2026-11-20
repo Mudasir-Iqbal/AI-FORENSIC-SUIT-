@@ -1,8 +1,12 @@
 import ipaddress
 import logging
 import os
+import shutil
 import socket
+import subprocess
+import tempfile
 import time
+import wave
 from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -11,10 +15,10 @@ import httpx
 
 import torch
 import torch.nn as nn
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
-from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
+from transformers import AutoConfig, AutoModel, AutoModelForAudioClassification, AutoProcessor, AutoTokenizer, PreTrainedModel
 
 MODEL_ID = os.getenv("TEXT_MODEL_ID", "desklib/ai-text-detector-v1.01")
 MAX_LEN = int(os.getenv("TEXT_MAX_LENGTH", "512"))
