@@ -19,6 +19,7 @@ const MODALITY_NAMES: Record<Modality, string> = {
   image: 'Image',
   audio: 'Audio',
   video: 'Video',
+  url: 'URL',
 };
 
 export function ResultCard({
@@ -40,7 +41,7 @@ export function ResultCard({
             Detection Verdict
           </h2>
           <span className="text-xs font-medium text-slate-400">
-            {MODALITY_NAMES[activeModality]} · {demoMode ? 'Demo Simulation' : 'Live API'}
+            {MODALITY_NAMES[activeModality]} · {demoMode && activeModality !== 'url' ? 'Demo Simulation' : 'Live API'}
           </span>
         </div>
 
@@ -129,7 +130,7 @@ export function ResultCard({
                       result.is_ai_generated ? 'text-rose-200' : 'text-emerald-200'
                     }`}
                   >
-                    {result.is_ai_generated ? 'AI Generated' : 'Human / Authentic'}
+                    {result.modality === 'url' ? (result.is_ai_generated ? 'Potentially Suspicious' : 'No Major Indicators') : (result.is_ai_generated ? 'AI Generated' : 'Human / Authentic')}
                   </p>
                 </div>
               </div>
@@ -146,14 +147,14 @@ export function ResultCard({
                 ) : (
                   <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                 )}
-                <span>{result.is_ai_generated ? 'Synthetic' : 'Authentic'}</span>
+                <span>{result.modality === 'url' ? (result.is_ai_generated ? 'Risk Flagged' : 'Lower Risk') : (result.is_ai_generated ? 'Synthetic' : 'Authentic')}</span>
               </span>
             </div>
 
             <div className="space-y-2.5">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm font-medium text-slate-300">
-                  AI Probability Score
+                  {result.modality === 'url' ? 'URL Risk Score' : 'AI Probability Score'}
                 </span>
                 <span
                   className={`font-mono text-2xl font-bold tabular-nums ${
@@ -169,7 +170,7 @@ export function ResultCard({
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={Math.round(result.ai_probability * 100)}
-                aria-label="AI Generation Probability"
+                aria-label={result.modality === 'url' ? 'URL Risk Score' : 'AI Generation Probability'}
                 className="h-3 w-full overflow-hidden rounded-full bg-slate-800"
               >
                 <div
@@ -215,12 +216,59 @@ export function ResultCard({
                 </p>
               </div>
             </div>
+
+            {result.modality === 'url' && (
+              <div className="space-y-4 border-t border-slate-800/80 pt-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-slate-400">HTTP Status</p>
+                    <p className="font-mono text-slate-100">{result.httpStatus ?? 'Unavailable'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Redirects Followed</p>
+                    <p className="font-mono text-slate-100">{result.redirectCount ?? 0}</p>
+                  </div>
+                  {result.finalUrl && (
+                    <div className="col-span-2 min-w-0">
+                      <p className="text-xs text-slate-400">Final Destination</p>
+                      <p className="break-all text-xs text-slate-200">{result.finalUrl}</p>
+                    </div>
+                  )}
+                </div>
+                {result.reasons && result.reasons.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-300">Evidence & Findings</p>
+                    <ul className="space-y-2">
+                      {result.reasons.map((reason, index) => (
+                        <li key={index} className="flex gap-2 text-xs leading-relaxed text-slate-300">
+                          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
+                          {reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {result.checks && result.checks.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-300">Inspection Checks</p>
+                    <ul className="space-y-2">
+                      {result.checks.map((check, index) => (
+                        <li key={index} className="flex items-start justify-between gap-3 text-xs">
+                          <span className="text-slate-300">{check.name}</span>
+                          <span className="text-right text-slate-400">{check.detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
 
       <div className="mt-6 border-t border-slate-800/70 pt-3 text-xs text-slate-500">
-        {result?.isDemo || demoMode
+        {result?.isDemo || (demoMode && activeModality !== 'url')
           ? 'Demo Mode simulates backend model responses locally with a 1.5s latency.'
           : 'Connected to configured inference endpoint.'}
       </div>
