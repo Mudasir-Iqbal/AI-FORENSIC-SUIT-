@@ -371,6 +371,112 @@ async def detect_url(req: URLDetectRequest) -> URLDetectResponse:
     )
 
 
+class AudioDetectResponse(BaseModel):
+    ai_probability: float
+    is_ai_generated: bool
+    label: str
+    modality: str
+    processing_time_ms: int
+    model_id: str
+    audio_duration_seconds: float
+    sample_rate: int
+    probabilities: dict[str, float]
+
+
+@app.post("/detect-audio", response_model=AudioDetectResponse)
+async def detect_audio(request: Request, file: UploadFile = File(...)) -> AudioDetectResponse:
+    started = time.perf_counter()
+    model = request.app.state.audio_model
+    processor = request.app.state.audio_processor
+    if model is None or processor is None:
+        raise HTTPException(status_code=503, detail="Audio detection model is unavailable. Check /health.")
+
+    filename = (file.filename or "").lower()
+    allowed_extensions = (".wav", ".mp3", ".ogg", ".m4a", ".flac", ".webm")
+    if not filename.endswith(allowed_extensions):
+        raise HTTPException(status_code=415, detail="Unsupported audio format. Use WAV, MP3, OGG, M4A, FLAC, or WEBM.")
+
+    raw = await file.read(AUDIO_MAX_BYTES + 1)
+    if not raw:
+        raise HTTPException(status_code=400, detail="Uploaded audio file is empty.")
+    if len(raw) > AUDIO_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Audio file exceeds the 20 MB upload limit.")
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise HTTPException(status_code=503, detail="Audio decoder is not available on the server.")
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="deepguard-audio-") as temp_dir:
+            input_path = os.path.join(temp_dir, "input" + os.path.splitext(filename)[1])
+            output_path = os.path.join(temp_dir, "audio.wav")
+            with open(input_path, "wb") as input_file:
+                input_file.write(raw)
+
+            command = [
+                ffmpeg, "-nostdin", "-v", "error", "-y",
+                "-i", input_path, "-vn", "-ac", "1",
+                "-ar", str(AUDIO_SAMPLE_RATE), "-t", str(AUDIO_MAX_SECONDS),
+                "-f", "wav", "-acodec", "pcm_s16le", output_path,
+            ]
+            converted = subprocess.run(command, capture_output=True, timeout=25, check=False)
+            if converted.returncode != 0 or not os.path.exists(output_path):
+                raise ValueError("Audio could not be decoded. Please upload a valid audio file.")
+
+            with wave.open(output_path, "rb") as wav_file:
+                sample_rate = wav_file.getframerate()
+                frames = wav_file.getnframes()
+                channels = wav_file.getnchannels()
+                sample_width = wav_file.getsampwidth()
+                if sample_rate != AUDIO_SAMPLE_RATE or channels != 1 or sample_width != 2:
+                    raise ValueError("Audio preprocessing did not produce the required 16 kHz mono PCM format.")
+                duration = frames / float(sample_rate)
+                if duration < 1.0:
+                    raise ValueError("Audio must be at least 1 second long.")
+                audio_bytes = wav_file.readframes(frames)
+
+        import numpy as np
+        audio = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        inputs = processor(audio, sampling_rate=AUDIO_SAMPLE_RATE, return_tensors="pt", padding=True)
+        inputs = {key: value.to(request.app.state.device) for key, value in inputs.items()}
+
+        with torch.inference_mode():
+            logits = model(**inputs).logits
+            probabilities_tensor = torch.softmax(logits, dim=-1)[0]
+
+        labels = {int(index): str(label).lower() for index, label in model.config.id2label.items()}
+        fake_index = next((index for index, label in labels.items() if "fake" in label or "spoof" in label), None)
+        real_index = next((index for index, label in labels.items() if "real" in label or "bonafide" in label or "bona fide" in label), None)
+        if fake_index is None or real_index is None:
+            raise ValueError("Audio model labels do not identify both fake and real classes.")
+
+        fake_probability = float(probabilities_tensor[fake_index].item())
+        real_probability = float(probabilities_tensor[real_index].item())
+        is_fake = fake_probability >= 0.5
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+
+        return AudioDetectResponse(
+            ai_probability=round(fake_probability, 4),
+            is_ai_generated=is_fake,
+            label="AI-Generated / Fake Audio" if is_fake else "Likely Real Audio",
+            modality="audio",
+            processing_time_ms=elapsed_ms,
+            model_id=AUDIO_MODEL_ID,
+            audio_duration_seconds=round(duration, 2),
+            sample_rate=AUDIO_SAMPLE_RATE,
+            probabilities={"fake": round(fake_probability, 4), "real": round(real_probability, 4)},
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=408, detail="Audio decoding timed out. Try a shorter file.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Audio inference failed")
+        raise HTTPException(status_code=500, detail="Audio inference failed. Check server logs for details.") from exc
+    finally:
+        await file.close()
+
+
 @app.get("/")
 def root() -> dict[str, str]:
     return {"service": "DeepGuard Backend API", "docs": "/docs"}
