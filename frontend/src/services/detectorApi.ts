@@ -127,7 +127,11 @@ function validateApiResponse(payload: unknown): DetectionApiResponse {
 }
 
 async function analyzeTextWithGradio(spaceUrl: string, text: string): Promise<DetectionApiResponse> {
-  const spaceBaseUrl = spaceUrl.replace(/\\/detect-text\\/?$/i, '').replace(/\\/+$/, '');
+  const legacySuffix = '/detect-text';
+  let spaceBaseUrl = spaceUrl.endsWith(legacySuffix)
+    ? spaceUrl.slice(0, -legacySuffix.length)
+    : spaceUrl;
+  if (spaceBaseUrl.endsWith('/')) spaceBaseUrl = spaceBaseUrl.slice(0, -1);
   let clientPromise = gradioClients.get(spaceBaseUrl);
   if (!clientPromise) {
     clientPromise = Client.connect(spaceBaseUrl);
