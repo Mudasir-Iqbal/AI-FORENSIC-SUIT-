@@ -55,7 +55,7 @@ export function ResultCard({
                 Ready for {MODALITY_NAMES[activeModality].toLowerCase()} verification
               </p>
               <p className="text-xs leading-relaxed text-slate-400">
-                Submit content on the left to inspect synthetic generation probability, verdict classification, and confidence breakdown.
+                Submit content on the left to inspect the selected content type and review its analysis evidence.
               </p>
             </div>
           </div>
@@ -184,9 +184,7 @@ export function ResultCard({
               </div>
 
               <div className="flex justify-between text-xs text-slate-500 font-mono tabular-nums">
-                <span>0% Human</span>
-                <span>50% Threshold</span>
-                <span>100% AI</span>
+                {result.modality === 'url' ? <><span>0% Low</span><span>40% Flag</span><span>100% High</span></> : <><span>0% Human</span><span>50% Threshold</span><span>100% AI</span></>}
               </div>
             </div>
 
@@ -204,9 +202,9 @@ export function ResultCard({
                 </p>
               </div>
               <div className="space-y-0.5">
-                <p className="text-xs text-slate-400">Confidence Level</p>
+                <p className="text-xs text-slate-400">{result.modality === 'url' ? 'Risk Assessment' : 'Confidence Level'}</p>
                 <p className="font-medium text-slate-100">
-                  {result.confidenceLevel}
+                  {result.modality === 'url' ? 'Heuristic' : result.confidenceLevel}
                 </p>
               </div>
               <div className="space-y-0.5">
