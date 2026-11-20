@@ -11,7 +11,6 @@ import type { AnalysisState, Modality } from '../types/detector';
 interface ResultCardProps {
   state: AnalysisState;
   activeModality: Modality;
-  demoMode: boolean;
 }
 
 const MODALITY_NAMES: Record<Modality, string> = {
@@ -25,7 +24,6 @@ const MODALITY_NAMES: Record<Modality, string> = {
 export function ResultCard({
   state,
   activeModality,
-  demoMode,
 }: ResultCardProps) {
   const { status, result, error } = state;
 
@@ -41,7 +39,7 @@ export function ResultCard({
             Detection Verdict
           </h2>
           <span className="text-xs font-medium text-slate-400">
-            {MODALITY_NAMES[activeModality]} · {demoMode && activeModality !== 'url' ? 'Demo Simulation' : 'Live API'}
+            {MODALITY_NAMES[activeModality]} · Live API
           </span>
         </div>
 
@@ -292,9 +290,7 @@ export function ResultCard({
       </div>
 
       <div className="mt-6 border-t border-slate-800/70 pt-3 text-xs text-slate-500">
-        {result?.isDemo || (demoMode && activeModality !== 'url')
-          ? 'Demo Mode simulates backend model responses locally with a 1.5s latency.'
-          : 'Connected to configured inference endpoint.'}
+        Results are returned by the configured inference endpoint.
       </div>
     </section>
   );
