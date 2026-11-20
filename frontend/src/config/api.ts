@@ -31,6 +31,9 @@ export const API_ENDPOINTS: Record<Modality, string> = {
 };
 
 export function isLiveEndpointConfigured(modality: Modality): boolean {
+  // The text detector has a public Hugging Face Space default, so it must
+  // remain available even when no VITE_* environment variables are set.
+  if (modality === 'text') return true;
   return configuredUrls[modality] !== null;
 }
 
