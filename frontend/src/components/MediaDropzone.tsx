@@ -10,7 +10,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent } from 'react';
 import type { Modality } from '../types/detector';
 
-type MediaModality = Exclude<Modality, 'text'>;
+type MediaModality = Exclude<Modality, 'text' | 'url'>;
 
 interface MediaDropzoneProps {
   modality: MediaModality;
