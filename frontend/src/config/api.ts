@@ -1,39 +1,28 @@
 import type { Modality } from '../types/detector';
 
-const TEXT_SPACE_DEFAULT = 'https://shikra99-deepguard-text-detector.hf.space';
-
-const FALLBACK_DEMO_ENDPOINTS: Record<Modality, string> = {
-  text: TEXT_SPACE_DEFAULT,
-  image: 'https://api-demo.deepguard.local/v1/detect/image',
-  audio: 'https://api-demo.deepguard.local/v1/detect/audio',
-  video: 'https://api-demo.deepguard.local/v1/detect/video',
-};
-
 function readEnvUrl(value: string | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
+// Live endpoints are configured by the deployment environment.
+// No third-party hosting URL is hardcoded into the frontend.
 const configuredUrls: Record<Modality, string | null> = {
-  // Text detector is wired to the public Gradio Space by default.
-  text: readEnvUrl(import.meta.env.VITE_TEXT_API_URL) ?? TEXT_SPACE_DEFAULT,
+  text: readEnvUrl(import.meta.env.VITE_TEXT_API_URL),
   image: readEnvUrl(import.meta.env.VITE_IMAGE_API_URL),
   audio: readEnvUrl(import.meta.env.VITE_AUDIO_API_URL),
   video: readEnvUrl(import.meta.env.VITE_VIDEO_API_URL),
 };
 
 export const API_ENDPOINTS: Record<Modality, string> = {
-  text: configuredUrls.text ?? FALLBACK_DEMO_ENDPOINTS.text,
-  image: configuredUrls.image ?? FALLBACK_DEMO_ENDPOINTS.image,
-  audio: configuredUrls.audio ?? FALLBACK_DEMO_ENDPOINTS.audio,
-  video: configuredUrls.video ?? FALLBACK_DEMO_ENDPOINTS.video,
+  text: configuredUrls.text ?? '',
+  image: configuredUrls.image ?? '',
+  audio: configuredUrls.audio ?? '',
+  video: configuredUrls.video ?? '',
 };
 
 export function isLiveEndpointConfigured(modality: Modality): boolean {
-  // The text detector has a public Hugging Face Space default, so it must
-  // remain available even when no VITE_* environment variables are set.
-  if (modality === 'text') return true;
   return configuredUrls[modality] !== null;
 }
 
