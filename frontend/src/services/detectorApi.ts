@@ -1,3 +1,4 @@
+import { Client } from '@gradio/client';
 import { API_ENDPOINTS, isLiveEndpointConfigured } from '../config/api';
 import type {
   DetectionApiResponse,
@@ -13,6 +14,7 @@ export interface AnalyzeRequest {
 }
 
 const DEMO_DELAY_MS = 1500;
+const gradioClients = new Map<string, ReturnType<typeof Client.connect>>();
 
 function computeConfidenceLevel(probability: number): 'High' | 'Moderate' | 'Low' {
   const distanceFromThreshold = Math.abs(probability - 0.5);
@@ -38,21 +40,10 @@ function simulateDemoResponse(
   if (modality === 'text' && text) {
     const normalized = text.toLowerCase();
     const aiMarkers = [
-      'moreover',
-      'furthermore',
-      'in conclusion',
-      'delve',
-      'tapestry',
-      'landscape',
-      'unprecedented',
-      'comprehensive',
-      'pivotal',
-      'leveraging',
-      'transformative',
-      'orchestrate',
-      'multifaceted',
+      'moreover', 'furthermore', 'in conclusion', 'delve', 'tapestry',
+      'landscape', 'unprecedented', 'comprehensive', 'pivotal',
+      'leveraging', 'transformative', 'orchestrate', 'multifaceted',
     ];
-
     const markerHits = aiMarkers.reduce(
       (count, marker) => (normalized.includes(marker) ? count + 1 : count),
       0
@@ -85,24 +76,9 @@ function simulateDemoResponse(
   const nameLower = (file?.name ?? '').toLowerCase();
 
   let isAi = seed % 2 === 0;
-  if (
-    nameLower.includes('ai') ||
-    nameLower.includes('gen') ||
-    nameLower.includes('midjourney') ||
-    nameLower.includes('sdxl') ||
-    nameLower.includes('flux') ||
-    nameLower.includes('deepfake') ||
-    nameLower.includes('synth')
-  ) {
+  if (['ai', 'gen', 'midjourney', 'sdxl', 'flux', 'deepfake', 'synth'].some((x) => nameLower.includes(x))) {
     isAi = true;
-  } else if (
-    nameLower.includes('real') ||
-    nameLower.includes('human') ||
-    nameLower.includes('camera') ||
-    nameLower.includes('raw') ||
-    nameLower.includes('dsc') ||
-    nameLower.includes('img_')
-  ) {
+  } else if (['real', 'human', 'camera', 'raw', 'dsc', 'img_'].some((x) => nameLower.includes(x))) {
     isAi = false;
   }
 
@@ -111,20 +87,10 @@ function simulateDemoResponse(
     : Number((0.06 + ((seed % 23) / 100)).toFixed(4));
 
   const labelByModality: Record<Exclude<Modality, 'text'>, { ai: string; human: string }> = {
-    image: {
-      ai: 'Diffusion Artifact Signature',
-      human: 'Authentic Camera Capture',
-    },
-    audio: {
-      ai: 'Neural Vocoder Synthesis',
-      human: 'Authentic Acoustic Recording',
-    },
-    video: {
-      ai: 'Temporal Deepfake Artifacts',
-      human: 'Authentic Video Stream',
-    },
+    image: { ai: 'Diffusion Artifact Signature', human: 'Authentic Camera Capture' },
+    audio: { ai: 'Neural Vocoder Synthesis', human: 'Authentic Acoustic Recording' },
+    video: { ai: 'Temporal Deepfake Artifacts', human: 'Authentic Video Stream' },
   };
-
   const labels = labelByModality[modality === 'text' ? 'image' : modality];
 
   return {
@@ -141,12 +107,11 @@ function validateApiResponse(payload: unknown): DetectionApiResponse {
 
   const record = payload as Record<string, unknown>;
   const rawProbability = Number(record.ai_probability);
-
-  if (Number.isNaN(rawProbability)) {
+  if (!Number.isFinite(rawProbability) || rawProbability < 0 || rawProbability > 1) {
     throw new Error('API response is missing a valid ai_probability score.');
   }
 
-  const aiProbability = Math.max(0, Math.min(1, rawProbability));
+  const aiProbability = rawProbability;
   const isAiGenerated =
     typeof record.is_ai_generated === 'boolean'
       ? record.is_ai_generated
@@ -158,11 +123,26 @@ function validateApiResponse(payload: unknown): DetectionApiResponse {
         ? 'AI Generated'
         : 'Human / Authentic';
 
-  return {
-    ai_probability: aiProbability,
-    is_ai_generated: isAiGenerated,
-    label,
-  };
+  return { ai_probability: aiProbability, is_ai_generated: isAiGenerated, label };
+}
+
+async function analyzeTextWithGradio(spaceUrl: string, text: string): Promise<DetectionApiResponse> {
+  let clientPromise = gradioClients.get(spaceUrl);
+  if (!clientPromise) {
+    clientPromise = Client.connect(spaceUrl);
+    gradioClients.set(spaceUrl, clientPromise);
+  }
+
+  try {
+    const client = await clientPromise;
+    const result = await client.predict('/detect_text', [text]);
+    const output = (result.data as unknown[] | undefined)?.[0];
+    return validateApiResponse(output);
+  } catch (error) {
+    gradioClients.delete(spaceUrl);
+    const message = error instanceof Error ? error.message : 'Unknown Gradio API error.';
+    throw new Error(`Hugging Face text detector failed: ${message}`);
+  }
 }
 
 export async function analyzeContent({
@@ -186,7 +166,6 @@ export async function analyzeContent({
     await new Promise((resolve) => setTimeout(resolve, DEMO_DELAY_MS));
     const simulated = simulateDemoResponse(modality, text, file);
     const processingTimeMs = Math.round(performance.now() - startedAt);
-
     return {
       ...simulated,
       modality,
@@ -198,52 +177,41 @@ export async function analyzeContent({
 
   if (!isLiveEndpointConfigured(modality)) {
     throw new Error(
-      `No live ${modality.toUpperCase()} API URL is configured. Enable Demo Mode or set VITE_${modality.toUpperCase()}_API_URL in your environment.`
+      `No live ${modality.toUpperCase()} API URL is configured. Set VITE_${modality.toUpperCase()}_API_URL in Vercel or enable Demo Mode.`
     );
   }
 
   const endpoint = API_ENDPOINTS[modality];
-  let response: Response;
+  let parsed: DetectionApiResponse;
 
-  try {
-    if (modality === 'text') {
-      response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text: text?.trim() ?? '' }),
-      });
-    } else {
+  if (modality === 'text') {
+    parsed = await analyzeTextWithGradio(endpoint, text?.trim() ?? '');
+  } else {
+    let response: Response;
+    try {
       const formData = new FormData();
       formData.append('file', file as File);
-
-      response = await fetch(endpoint, {
-        method: 'POST',
-        body: formData,
-      });
+      response = await fetch(endpoint, { method: 'POST', body: formData });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Network error while reaching the detection API.';
+      throw new Error(`Connection failed: ${message}`);
     }
-  } catch (err) {
-    const message =
-      err instanceof Error ? err.message : 'Network error while reaching the detection API.';
-    throw new Error(`Connection failed: ${message}`);
+
+    if (!response.ok) {
+      let errorDetail = `HTTP ${response.status} ${response.statusText}`;
+      try {
+        const errBody = (await response.json()) as { detail?: string; error?: string; message?: string };
+        errorDetail = errBody.detail || errBody.error || errBody.message || errorDetail;
+      } catch {
+        // Keep the HTTP status when the endpoint does not return JSON.
+      }
+      throw new Error(`Detection endpoint returned an error: ${errorDetail}`);
+    }
+
+    parsed = validateApiResponse(await response.json());
   }
 
-  if (!response.ok) {
-    let errorDetail = `HTTP ${response.status} ${response.statusText}`;
-    try {
-      const errBody = (await response.json()) as { detail?: string; error?: string; message?: string };
-      errorDetail = errBody.detail || errBody.error || errBody.message || errorDetail;
-    } catch {
-      // Fallback to HTTP status message if response body is not JSON
-    }
-    throw new Error(`Detection endpoint returned an error: ${errorDetail}`);
-  }
-
-  const rawJson: unknown = await response.json();
-  const parsed = validateApiResponse(rawJson);
   const processingTimeMs = Math.round(performance.now() - startedAt);
-
   return {
     ...parsed,
     modality,
