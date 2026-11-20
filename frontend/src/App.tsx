@@ -10,7 +10,6 @@ import { ModalityTabs } from './components/ModalityTabs';
 import { ResultCard } from './components/ResultCard';
 import { TextWorkspace } from './components/TextWorkspace';
 import { URLWorkspace } from './components/URLWorkspace';
-import { hasAnyConfiguredEndpoint } from './config/api';
 import { analyzeContent } from './services/detectorApi';
 import type { AnalysisState, Modality } from './types/detector';
 
@@ -24,7 +23,6 @@ const INITIAL_ANALYSIS_STATE: AnalysisState = {
 
 export default function App() {
   const [activeModality, setActiveModality] = useState<Modality>('text');
-  const [demoMode, setDemoMode] = useState<boolean>(() => !hasAnyConfiguredEndpoint);
   const [textInput, setTextInput] = useState<string>('');
   const [urlInput, setUrlInput] = useState<string>('');
   const [mediaFiles, setMediaFiles] = useState<MediaFilesState>({
@@ -44,10 +42,6 @@ export default function App() {
     requestIdRef.current += 1;
     setActiveModality(modality);
     setAnalysisState(INITIAL_ANALYSIS_STATE);
-  };
-
-  const handleToggleDemoMode = () => {
-    setDemoMode((prev) => !prev);
   };
 
   const handleSelectMediaFile = (
@@ -78,7 +72,6 @@ export default function App() {
         modality: activeModality,
         text: activeModality === 'text' ? textInput : activeModality === 'url' ? urlInput : undefined,
         file: activeModality === 'text' || activeModality === 'url' ? null : mediaFiles[activeModality],
-        demoMode,
       });
 
       if (requestIdRef.current !== currentRequestId) return;
@@ -112,7 +105,7 @@ export default function App() {
       />
 
       <div className="relative z-10 flex min-h-screen flex-col">
-        <Header demoMode={demoMode} onToggleDemoMode={handleToggleDemoMode} />
+        <Header />
 
         <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
           <ModalityTabs
@@ -158,7 +151,6 @@ export default function App() {
               <ResultCard
                 state={analysisState}
                 activeModality={activeModality}
-                demoMode={demoMode}
               />
             </div>
           </div>
