@@ -2,7 +2,7 @@ import sys
 
 import modal
 
-modal_app = modal.App("deepguard-api")
+app = modal.App("deepguard-api")
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -12,7 +12,7 @@ image = (
 )
 
 
-@modal_app.function(
+@app.function(
     image=image,
     cpu=4,
     memory=8192,
