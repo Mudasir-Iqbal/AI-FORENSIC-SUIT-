@@ -89,6 +89,7 @@ async def lifespan(app: FastAPI):
     app.state.audio_model = None
     app.state.audio_processor = None
     app.state.audio_model_status = "loading"
+    app.state.audio_model_error = None
 
     try:
         logger.info("Loading text detector: %s", MODEL_ID)
@@ -115,8 +116,9 @@ async def lifespan(app: FastAPI):
         app.state.audio_model = audio_model
         app.state.audio_model_status = "ready"
         logger.info("Audio detector loaded on %s", app.state.device)
-    except Exception:
+    except Exception as exc:
         app.state.audio_model_status = "error"
+        app.state.audio_model_error = f"{type(exc).__name__}: {str(exc)[:500]}"
         logger.exception("Failed to load audio detector")
 
     yield
@@ -483,7 +485,7 @@ def root() -> dict[str, str]:
 
 
 @app.get("/health")
-def health_check(request: Request) -> dict[str, str | bool]:
+def health_check(request: Request) -> dict[str, str | bool | None]:
     model_loaded = request.app.state.model is not None
     return {
         "status": "ok" if model_loaded else request.app.state.model_status,
@@ -493,6 +495,7 @@ def health_check(request: Request) -> dict[str, str | bool]:
         "audio_model_loaded": request.app.state.audio_model is not None,
         "audio_model_status": request.app.state.audio_model_status,
         "audio_model_id": AUDIO_MODEL_ID,
+        "audio_model_error": request.app.state.audio_model_error,
     }
 
 
