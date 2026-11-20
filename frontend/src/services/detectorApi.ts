@@ -31,7 +31,7 @@ function hashString(input: string): number {
 }
 
 function simulateDemoResponse(
-  modality: Modality,
+  modality: Exclude<Modality, 'url'>,
   text?: string,
   file?: File | null
 ): DetectionApiResponse {
@@ -84,7 +84,7 @@ function simulateDemoResponse(
     ? Number((0.76 + ((seed % 21) / 100)).toFixed(4))
     : Number((0.06 + ((seed % 23) / 100)).toFixed(4));
 
-  const labelByModality: Record<Exclude<Modality, 'text'>, { ai: string; human: string }> = {
+  const labelByModality: Record<Exclude<Modality, 'text' | 'url'>, { ai: string; human: string }> = {
     image: { ai: 'Diffusion Artifact Signature', human: 'Authentic Camera Capture' },
     audio: { ai: 'Neural Vocoder Synthesis', human: 'Authentic Acoustic Recording' },
     video: { ai: 'Temporal Deepfake Artifacts', human: 'Authentic Video Stream' },
@@ -147,9 +147,9 @@ export async function analyzeContent({
   file,
   demoMode,
 }: AnalyzeRequest): Promise<DetectionResult> {
-  if (modality === 'text') {
+  if (modality === 'text' || modality === 'url') {
     if (!text?.trim()) {
-      throw new Error('Please enter or paste some text before running analysis.');
+      throw new Error('Please enter a valid value before running analysis.');
     }
   } else if (modality !== 'url' && !file) {
     throw new Error(`Please upload a valid ${modality} file before running analysis.`);
