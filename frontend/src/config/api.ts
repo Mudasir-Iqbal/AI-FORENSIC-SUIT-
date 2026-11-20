@@ -10,6 +10,7 @@ function readEnvUrl(value: string | undefined): string | null {
 // No third-party hosting URL is hardcoded into the frontend.
 const configuredUrls: Record<Modality, string | null> = {
   text: readEnvUrl(import.meta.env.VITE_TEXT_API_URL) ?? 'https://mudasir-iqbal--deepguard-api-create-api.us-east.modal.run/detect-text',
+  url: readEnvUrl(import.meta.env.VITE_URL_API_URL) ?? 'https://mudasir-iqbal--deepguard-api-create-api.us-east.modal.run/detect-url',
   image: readEnvUrl(import.meta.env.VITE_IMAGE_API_URL),
   audio: readEnvUrl(import.meta.env.VITE_AUDIO_API_URL),
   video: readEnvUrl(import.meta.env.VITE_VIDEO_API_URL),
@@ -17,6 +18,7 @@ const configuredUrls: Record<Modality, string | null> = {
 
 export const API_ENDPOINTS: Record<Modality, string> = {
   text: configuredUrls.text ?? '',
+  url: configuredUrls.url ?? '',
   image: configuredUrls.image ?? '',
   audio: configuredUrls.audio ?? '',
   video: configuredUrls.video ?? '',
