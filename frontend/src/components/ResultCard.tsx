@@ -130,7 +130,7 @@ export function ResultCard({
                       result.is_ai_generated ? 'text-rose-200' : 'text-emerald-200'
                     }`}
                   >
-                    {result.modality === 'url' ? (result.is_ai_generated ? 'Potentially Suspicious' : 'No Major Indicators') : (result.is_ai_generated ? 'AI Generated' : 'Human / Authentic')}
+                    {result.modality === 'url' ? (result.is_ai_generated ? 'Potentially Suspicious' : 'No Major Indicators') : result.modality === 'audio' ? (result.is_ai_generated ? 'AI-Generated / Fake Audio' : 'Likely Real Audio') : (result.is_ai_generated ? 'AI Generated' : 'Human / Authentic')}
                   </p>
                 </div>
               </div>
@@ -154,7 +154,7 @@ export function ResultCard({
             <div className="space-y-2.5">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm font-medium text-slate-300">
-                  {result.modality === 'url' ? 'URL Risk Score' : 'AI Probability Score'}
+                  {result.modality === 'url' ? 'URL Risk Score' : result.modality === 'audio' ? 'Fake Audio Probability' : 'AI Probability Score'}
                 </span>
                 <span
                   className={`font-mono text-2xl font-bold tabular-nums ${
@@ -184,7 +184,7 @@ export function ResultCard({
               </div>
 
               <div className="flex justify-between text-xs text-slate-500 font-mono tabular-nums">
-                {result.modality === 'url' ? <><span>0% Low</span><span>40% Flag</span><span>100% High</span></> : <><span>0% Human</span><span>50% Threshold</span><span>100% AI</span></>}
+                {result.modality === 'url' ? <><span>0% Low</span><span>40% Flag</span><span>100% High</span></> : <><span>0% Real</span><span>50% Threshold</span><span>100% Fake</span></>}
               </div>
             </div>
 
@@ -214,6 +214,32 @@ export function ResultCard({
                 </p>
               </div>
             </div>
+
+            {result.modality === 'audio' && (
+              <div className="space-y-3 border-t border-slate-800/80 pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Audio Model Evidence</p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-xs text-slate-400">Audio Duration</p>
+                    <p className="font-mono text-slate-100">{result.audioDurationSeconds ?? 'N/A'}s</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Sample Rate</p>
+                    <p className="font-mono text-slate-100">{result.sampleRate ? (result.sampleRate / 1000) + ' kHz' : 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Fake Probability</p>
+                    <p className="font-mono text-rose-300">{result.audioProbabilities ? Math.round(result.audioProbabilities.fake * 100) + '%' : 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Real Probability</p>
+                    <p className="font-mono text-emerald-300">{result.audioProbabilities ? Math.round(result.audioProbabilities.real * 100) + '%' : 'N/A'}</p>
+                  </div>
+                </div>
+                <p className="break-all text-xs text-slate-500">Model: {result.modelId ?? 'Audio model'}</p>
+                <p className="text-xs leading-relaxed text-slate-400">Model output is a classification estimate, not proof of audio authenticity. Performance can vary across languages, codecs, and recording conditions.</p>
+              </div>
+            )}
 
             {result.modality === 'url' && (
               <div className="space-y-4 border-t border-slate-800/80 pt-4">
