@@ -4,3 +4,4 @@ torch==2.4.1
 transformers==4.48.2
 safetensors==0.4.5
 pydantic==2.9.2
+httpx==0.27.2
