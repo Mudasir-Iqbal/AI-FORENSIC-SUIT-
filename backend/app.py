@@ -11,17 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from transformers import AutoConfig, AutoModel, AutoTokenizer, PreTrainedModel
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
 MODEL_ID = os.getenv("TEXT_MODEL_ID", "desklib/ai-text-detector-v1.01")
 MAX_LEN = int(os.getenv("TEXT_MAX_LENGTH", "512"))
 MAX_TEXT_CHARS = int(os.getenv("MAX_TEXT_CHARS", "20000"))
 THRESHOLD = float(os.getenv("TEXT_AI_THRESHOLD", "0.5"))
 
-# Set FRONTEND_ORIGINS to comma-separated production origins.
-# Local development origins are included by default.
 DEFAULT_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
 ALLOWED_ORIGINS = [
     origin.strip()
@@ -35,12 +29,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("deepguard.api")
 
-
-# ---------------------------------------------------------------------------
-# Model architecture
-# Keep this architecture aligned with the checkpoint's original training code.
-# A successful import does not prove that the checkpoint weights are compatible.
-# ---------------------------------------------------------------------------
 
 class DesklibAIDetectionModel(PreTrainedModel):
     config_class = AutoConfig
@@ -56,8 +44,15 @@ class DesklibAIDetectionModel(PreTrainedModel):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor | None = None,
+        token_type_ids: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
-        outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+        # DeBERTa-v2 tokenizers may return token_type_ids. Forward them to
+        # the backbone instead of rejecting them at this wrapper's boundary.
+        model_inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
+        if token_type_ids is not None:
+            model_inputs["token_type_ids"] = token_type_ids
+
+        outputs = self.model(**model_inputs)
         hidden_states = outputs.last_hidden_state
 
         if attention_mask is None:
@@ -68,10 +63,6 @@ class DesklibAIDetectionModel(PreTrainedModel):
 
         return {"logits": self.classifier(pooled)}
 
-
-# ---------------------------------------------------------------------------
-# Application lifecycle
-# ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -94,8 +85,6 @@ async def lifespan(app: FastAPI):
     except Exception:
         app.state.model_status = "error"
         logger.exception("Failed to load text detector")
-        # Keep the API alive so /health can report the failure and return 503
-        # for inference requests. Do not return fabricated/demo predictions.
 
     yield
 
@@ -108,7 +97,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="DeepGuard Backend API",
-    version="0.2.0",
+    version="0.2.1",
     description="Model-backed multimodal content verification API.",
     lifespan=lifespan,
 )
@@ -121,10 +110,6 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-
-# ---------------------------------------------------------------------------
-# API schemas
-# ---------------------------------------------------------------------------
 
 class TextDetectRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=MAX_TEXT_CHARS)
@@ -144,10 +129,6 @@ class DetectResponse(BaseModel):
     modality: str
     processing_time_ms: int
 
-
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
 
 @app.get("/")
 def root() -> dict[str, str]:
@@ -176,19 +157,19 @@ def detect_text(req: TextDetectRequest, request: Request) -> DetectResponse:
             detail="Text detection model is unavailable. Check the /health endpoint.",
         )
 
-    clean_text = req.text.strip()
     start = time.perf_counter()
-
     try:
-        # Dynamic padding avoids padding every short input to the full 512 tokens.
         encoded = tokenizer(
-            clean_text,
+            req.text.strip(),
             padding=True,
             truncation=True,
             max_length=MAX_LEN,
             return_tensors="pt",
         )
-        encoded = {key: value.to(request.app.state.device) for key, value in encoded.items()}
+        encoded = {
+            key: value.to(request.app.state.device)
+            for key, value in encoded.items()
+        }
 
         with torch.inference_mode():
             outputs = model(**encoded)
@@ -197,8 +178,6 @@ def detect_text(req: TextDetectRequest, request: Request) -> DetectResponse:
         if not 0.0 <= probability <= 1.0:
             raise ValueError("Model returned an invalid probability.")
 
-    except HTTPException:
-        raise
     except Exception as exc:
         logger.exception("Text inference failed")
         raise HTTPException(
