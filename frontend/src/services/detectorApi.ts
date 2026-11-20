@@ -234,11 +234,23 @@ export async function analyzeContent({
   }
 
   const parsed = validateApiResponse(payload);
+  const record = payload as Record<string, unknown>;
+  const audioProbabilities = record.probabilities && typeof record.probabilities === 'object'
+    ? record.probabilities as Record<string, unknown>
+    : null;
   return {
     ...parsed,
     modality,
-    processingTimeMs,
+    processingTimeMs: Number(record.processing_time_ms) || processingTimeMs,
     confidenceLevel: computeConfidenceLevel(parsed.ai_probability),
     isDemo: false,
+    ...(modality === 'audio' ? {
+      modelId: typeof record.model_id === 'string' ? record.model_id : undefined,
+      audioDurationSeconds: typeof record.audio_duration_seconds === 'number' ? record.audio_duration_seconds : undefined,
+      sampleRate: typeof record.sample_rate === 'number' ? record.sample_rate : undefined,
+      audioProbabilities: audioProbabilities
+        ? { fake: Number(audioProbabilities.fake) || 0, real: Number(audioProbabilities.real) || 0 }
+        : undefined,
+    } : {}),
   };
 }
