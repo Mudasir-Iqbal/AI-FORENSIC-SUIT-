@@ -1,11 +1,6 @@
 import { Shield } from 'lucide-react';
 
-interface HeaderProps {
-  demoMode: boolean;
-  onToggleDemoMode: () => void;
-}
-
-export function Header({ demoMode, onToggleDemoMode }: HeaderProps) {
+export function Header() {
   return (
     <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
@@ -23,34 +18,6 @@ export function Header({ demoMode, onToggleDemoMode }: HeaderProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3 sm:justify-end shrink-0">
-          <div className="flex items-center gap-3 rounded-xl border border-slate-800/90 bg-slate-900/70 px-3.5 py-2">
-            <span
-              id="demo-mode-label"
-              className="text-sm font-medium text-slate-200 whitespace-nowrap"
-            >
-              Demo Mode
-            </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={demoMode}
-              aria-labelledby="demo-mode-label"
-              onClick={onToggleDemoMode}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
-                demoMode
-                  ? 'border-cyan-400/50 bg-cyan-500'
-                  : 'border-slate-700 bg-slate-800'
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                  demoMode ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
       </div>
     </header>
   );
