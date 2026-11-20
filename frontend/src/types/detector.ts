@@ -10,7 +10,6 @@ export interface DetectionResult extends DetectionApiResponse {
   modality: Modality;
   processingTimeMs: number;
   confidenceLevel: 'High' | 'Moderate' | 'Low';
-  isDemo: boolean;
   riskScore?: number;
   finalUrl?: string | null;
   httpStatus?: number | null;
