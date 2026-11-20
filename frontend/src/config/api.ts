@@ -1,7 +1,9 @@
 import type { Modality } from '../types/detector';
 
+const TEXT_SPACE_DEFAULT = 'https://shikra99-deepguard-text-detector.hf.space';
+
 const FALLBACK_DEMO_ENDPOINTS: Record<Modality, string> = {
-  text: 'https://api-demo.deepguard.local/v1/detect/text',
+  text: TEXT_SPACE_DEFAULT,
   image: 'https://api-demo.deepguard.local/v1/detect/image',
   audio: 'https://api-demo.deepguard.local/v1/detect/audio',
   video: 'https://api-demo.deepguard.local/v1/detect/video',
@@ -14,7 +16,8 @@ function readEnvUrl(value: string | undefined): string | null {
 }
 
 const configuredUrls: Record<Modality, string | null> = {
-  text: readEnvUrl(import.meta.env.VITE_TEXT_API_URL),
+  // Text detector is wired to the public Gradio Space by default.
+  text: readEnvUrl(import.meta.env.VITE_TEXT_API_URL) ?? TEXT_SPACE_DEFAULT,
   image: readEnvUrl(import.meta.env.VITE_IMAGE_API_URL),
   audio: readEnvUrl(import.meta.env.VITE_AUDIO_API_URL),
   video: readEnvUrl(import.meta.env.VITE_VIDEO_API_URL),
