@@ -217,6 +217,7 @@ async def detect_url(req: URLDetectRequest) -> URLDetectResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     parsed = urlsplit(current_url)
+    checks.append(URLCheck(name="DNS resolution", status="pass", detail="Hostname resolves only to public IP addresses."))
     hostname = host
     is_ip = False
     try:
@@ -311,11 +312,11 @@ async def detect_url(req: URLDetectRequest) -> URLDetectResponse:
 
         checks.append(URLCheck(name="HTTP response", status="pass" if http_status and http_status < 400 else "warning", detail=f"Final HTTP status: {http_status or 'unavailable'}."))
 
-    except (httpx.HTTPError, ValueError) as exc:
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
         network_note = str(exc)
         checks.append(URLCheck(name="Live connection", status="warning", detail=f"Could not complete live inspection: {network_note[:180]}"))
-        if "blocked" in network_note.lower() or "private" in network_note.lower():
-            raise HTTPException(status_code=400, detail=network_note) from exc
 
     score = round(min(max(score, 0.0), 100.0), 1)
     suspicious = score >= 40
