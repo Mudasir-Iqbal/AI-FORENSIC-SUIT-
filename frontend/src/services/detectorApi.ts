@@ -157,7 +157,7 @@ export async function analyzeContent({
 
   const startedAt = performance.now();
 
-  if (demoMode) {
+  if (demoMode && modality !== 'url') {
     await new Promise((resolve) => setTimeout(resolve, DEMO_DELAY_MS));
     const simulated = simulateDemoResponse(modality, text, file);
     const processingTimeMs = Math.round(performance.now() - startedAt);
