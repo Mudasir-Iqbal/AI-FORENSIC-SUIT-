@@ -151,7 +151,7 @@ export async function analyzeContent({
     if (!text?.trim()) {
       throw new Error('Please enter or paste some text before running analysis.');
     }
-  } else if (!file) {
+  } else if (modality !== 'url' && !file) {
     throw new Error(`Please upload a valid ${modality} file before running analysis.`);
   }
 
@@ -186,6 +186,12 @@ export async function analyzeContent({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: text?.trim() ?? '' }),
       });
+    } else if (modality === 'url') {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: text?.trim() ?? '' }),
+      });
     } else {
       const formData = new FormData();
       formData.append('file', file as File);
@@ -200,9 +206,34 @@ export async function analyzeContent({
     throw new Error(`Detection endpoint returned an error: ${await readApiError(response)}`);
   }
 
-  const parsed = validateApiResponse(await response.json());
+  const payload = await response.json();
   const processingTimeMs = Math.round(performance.now() - startedAt);
 
+  if (modality === 'url') {
+    const record = payload as Record<string, unknown>;
+    const riskScore = Number(record.risk_score);
+    if (!Number.isFinite(riskScore) || riskScore < 0 || riskScore > 100) {
+      throw new Error('URL API response is missing a valid risk_score.');
+    }
+    const isSuspicious = Boolean(record.is_suspicious);
+    return {
+      ai_probability: riskScore / 100,
+      is_ai_generated: isSuspicious,
+      label: typeof record.label === 'string' ? record.label : 'URL Risk Assessment',
+      modality: 'url',
+      processingTimeMs: Number(record.processing_time_ms) || processingTimeMs,
+      confidenceLevel: computeConfidenceLevel(riskScore / 100),
+      isDemo: false,
+      riskScore,
+      finalUrl: typeof record.final_url === 'string' ? record.final_url : null,
+      httpStatus: typeof record.http_status === 'number' ? record.http_status : null,
+      redirectCount: Number(record.redirect_count) || 0,
+      reasons: Array.isArray(record.reasons) ? record.reasons.filter((item): item is string => typeof item === 'string') : [],
+      checks: Array.isArray(record.checks) ? record.checks as DetectionResult['checks'] : [],
+    };
+  }
+
+  const parsed = validateApiResponse(payload);
   return {
     ...parsed,
     modality,
