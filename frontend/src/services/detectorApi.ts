@@ -151,7 +151,7 @@ export async function analyzeContent({
     if (!text?.trim()) {
       throw new Error('Please enter a valid value before running analysis.');
     }
-  } else if (modality !== 'url' && !file) {
+  } else if (!file) {
     throw new Error(`Please upload a valid ${modality} file before running analysis.`);
   }
 
