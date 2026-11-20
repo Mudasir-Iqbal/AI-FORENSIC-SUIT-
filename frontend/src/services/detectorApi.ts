@@ -129,7 +129,6 @@ export async function analyzeContent({
       modality: 'url',
       processingTimeMs: Number(record.processing_time_ms) || processingTimeMs,
       confidenceLevel: computeConfidenceLevel(riskScore / 100),
-      isDemo: false,
       riskScore,
       finalUrl: typeof record.final_url === 'string' ? record.final_url : null,
       httpStatus: typeof record.http_status === 'number' ? record.http_status : null,
@@ -149,7 +148,6 @@ export async function analyzeContent({
     modality,
     processingTimeMs: Number(record.processing_time_ms) || processingTimeMs,
     confidenceLevel: computeConfidenceLevel(parsed.ai_probability),
-    isDemo: false,
     ...(modality === 'audio' ? {
       modelId: typeof record.model_id === 'string' ? record.model_id : undefined,
       audioDurationSeconds: typeof record.audio_duration_seconds === 'number' ? record.audio_duration_seconds : undefined,
