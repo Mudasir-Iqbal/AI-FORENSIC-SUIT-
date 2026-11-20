@@ -20,6 +20,9 @@ export interface DetectionResult extends DetectionApiResponse {
   audioDurationSeconds?: number;
   sampleRate?: number;
   audioProbabilities?: { fake: number; real: number };
+  imageWidth?: number;
+  imageHeight?: number;
+  imageProbabilities?: { ai: number; real: number };
 }
 
 export type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error';
