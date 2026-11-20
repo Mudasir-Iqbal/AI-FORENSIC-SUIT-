@@ -21,6 +21,10 @@ from pydantic import BaseModel, Field, field_validator
 from transformers import AutoConfig, AutoModel, AutoModelForAudioClassification, AutoProcessor, AutoTokenizer, PreTrainedModel
 
 MODEL_ID = os.getenv("TEXT_MODEL_ID", "desklib/ai-text-detector-v1.01")
+AUDIO_MODEL_ID = os.getenv("AUDIO_MODEL_ID", "MelodyMachine/Deepfake-audio-detection-V2")
+AUDIO_SAMPLE_RATE = 16000
+AUDIO_MAX_SECONDS = int(os.getenv("AUDIO_MAX_SECONDS", "30"))
+AUDIO_MAX_BYTES = 20971520
 MAX_LEN = int(os.getenv("TEXT_MAX_LENGTH", "512"))
 MAX_TEXT_CHARS = int(os.getenv("MAX_TEXT_CHARS", "20000"))
 URL_TIMEOUT_SECONDS = float(os.getenv("URL_TIMEOUT_SECONDS", "5"))
@@ -82,6 +86,9 @@ async def lifespan(app: FastAPI):
     app.state.tokenizer = None
     app.state.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     app.state.model_status = "loading"
+    app.state.audio_model = None
+    app.state.audio_processor = None
+    app.state.audio_model_status = "loading"
 
     try:
         logger.info("Loading text detector: %s", MODEL_ID)
@@ -98,10 +105,26 @@ async def lifespan(app: FastAPI):
         app.state.model_status = "error"
         logger.exception("Failed to load text detector")
 
+    try:
+        logger.info("Loading audio detector: %s", AUDIO_MODEL_ID)
+        audio_processor = AutoProcessor.from_pretrained(AUDIO_MODEL_ID)
+        audio_model = AutoModelForAudioClassification.from_pretrained(AUDIO_MODEL_ID)
+        audio_model.to(app.state.device)
+        audio_model.eval()
+        app.state.audio_processor = audio_processor
+        app.state.audio_model = audio_model
+        app.state.audio_model_status = "ready"
+        logger.info("Audio detector loaded on %s", app.state.device)
+    except Exception:
+        app.state.audio_model_status = "error"
+        logger.exception("Failed to load audio detector")
+
     yield
 
     app.state.model = None
     app.state.tokenizer = None
+    app.state.audio_model = None
+    app.state.audio_processor = None
     if app.state.device.type == "cuda":
         torch.cuda.empty_cache()
     logger.info("Application shutdown complete")
@@ -361,6 +384,9 @@ def health_check(request: Request) -> dict[str, str | bool]:
         "model_loaded": model_loaded,
         "device": str(request.app.state.device),
         "model_id": MODEL_ID,
+        "audio_model_loaded": request.app.state.audio_model is not None,
+        "audio_model_status": request.app.state.audio_model_status,
+        "audio_model_id": AUDIO_MODEL_ID,
     }
 
 
