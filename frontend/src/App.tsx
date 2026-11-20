@@ -9,11 +9,12 @@ import { MediaDropzone } from './components/MediaDropzone';
 import { ModalityTabs } from './components/ModalityTabs';
 import { ResultCard } from './components/ResultCard';
 import { TextWorkspace } from './components/TextWorkspace';
+import { URLWorkspace } from './components/URLWorkspace';
 import { hasAnyConfiguredEndpoint } from './config/api';
 import { analyzeContent } from './services/detectorApi';
 import type { AnalysisState, Modality } from './types/detector';
 
-type MediaFilesState = Record<Exclude<Modality, 'text'>, File | null>;
+type MediaFilesState = Record<Exclude<Modality, 'text' | 'url'>, File | null>;
 
 const INITIAL_ANALYSIS_STATE: AnalysisState = {
   status: 'idle',
@@ -25,6 +26,7 @@ export default function App() {
   const [activeModality, setActiveModality] = useState<Modality>('text');
   const [demoMode, setDemoMode] = useState<boolean>(() => !hasAnyConfiguredEndpoint);
   const [textInput, setTextInput] = useState<string>('');
+  const [urlInput, setUrlInput] = useState<string>('');
   const [mediaFiles, setMediaFiles] = useState<MediaFilesState>({
     image: null,
     audio: null,
@@ -74,8 +76,8 @@ export default function App() {
     try {
       const result = await analyzeContent({
         modality: activeModality,
-        text: activeModality === 'text' ? textInput : undefined,
-        file: activeModality === 'text' ? null : mediaFiles[activeModality],
+        text: activeModality === 'text' ? textInput : activeModality === 'url' ? urlInput : undefined,
+        file: activeModality === 'text' || activeModality === 'url' ? null : mediaFiles[activeModality],
         demoMode,
       });
 
@@ -126,9 +128,17 @@ export default function App() {
                   text={textInput}
                   onChangeText={(value) => {
                     setTextInput(value);
-                    if (analysisState.status === 'error') {
-                      setAnalysisState(INITIAL_ANALYSIS_STATE);
-                    }
+                    if (analysisState.status === 'error') setAnalysisState(INITIAL_ANALYSIS_STATE);
+                  }}
+                  onAnalyze={handleAnalyze}
+                  isLoading={isLoading}
+                />
+              ) : activeModality === 'url' ? (
+                <URLWorkspace
+                  url={urlInput}
+                  onChangeURL={(value) => {
+                    setUrlInput(value);
+                    if (analysisState.status === 'error') setAnalysisState(INITIAL_ANALYSIS_STATE);
                   }}
                   onAnalyze={handleAnalyze}
                   isLoading={isLoading}
@@ -137,9 +147,7 @@ export default function App() {
                 <MediaDropzone
                   modality={activeModality}
                   file={mediaFiles[activeModality]}
-                  onSelectFile={(file) =>
-                    handleSelectMediaFile(activeModality, file)
-                  }
+                  onSelectFile={(file) => handleSelectMediaFile(activeModality, file)}
                   onAnalyze={handleAnalyze}
                   isLoading={isLoading}
                 />
