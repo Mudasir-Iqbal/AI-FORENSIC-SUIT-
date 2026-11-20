@@ -1,4 +1,5 @@
 import ipaddress
+import io
 import logging
 import os
 import shutil
@@ -18,10 +19,14 @@ import torch.nn as nn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
-from transformers import AutoConfig, AutoFeatureExtractor, AutoModel, AutoModelForAudioClassification, AutoTokenizer, PreTrainedModel
+from PIL import Image, ImageOps, UnidentifiedImageError
+from transformers import AutoConfig, AutoFeatureExtractor, AutoImageProcessor, AutoModel, AutoModelForAudioClassification, AutoModelForImageClassification, AutoTokenizer, PreTrainedModel
 
 MODEL_ID = os.getenv("TEXT_MODEL_ID", "desklib/ai-text-detector-v1.01")
 AUDIO_MODEL_ID = os.getenv("AUDIO_MODEL_ID", "MelodyMachine/Deepfake-audio-detection-V2")
+IMAGE_MODEL_ID = os.getenv("IMAGE_MODEL_ID", "aaronkantrowitz/ai-human-generated-image-detection")
+IMAGE_MAX_BYTES = 15728640
+IMAGE_MAX_PIXELS = 40000000
 AUDIO_SAMPLE_RATE = 16000
 AUDIO_MAX_SECONDS = int(os.getenv("AUDIO_MAX_SECONDS", "30"))
 AUDIO_MAX_BYTES = 20971520
@@ -90,6 +95,10 @@ async def lifespan(app: FastAPI):
     app.state.audio_processor = None
     app.state.audio_model_status = "loading"
     app.state.audio_model_error = None
+    app.state.image_model = None
+    app.state.image_processor = None
+    app.state.image_model_status = "loading"
+    app.state.image_model_error = None
 
     try:
         logger.info("Loading text detector: %s", MODEL_ID)
@@ -121,12 +130,28 @@ async def lifespan(app: FastAPI):
         app.state.audio_model_error = f"{type(exc).__name__}: {str(exc)[:500]}"
         logger.exception("Failed to load audio detector")
 
+    try:
+        logger.info("Loading image detector: %s", IMAGE_MODEL_ID)
+        image_processor = AutoImageProcessor.from_pretrained(IMAGE_MODEL_ID)
+        image_model = AutoModelForImageClassification.from_pretrained(IMAGE_MODEL_ID)
+        image_model.to(app.state.device)
+        image_model.eval()
+        app.state.image_processor = image_processor
+        app.state.image_model = image_model
+        app.state.image_model_status = "ready"
+        logger.info("Image detector loaded on %s", app.state.device)
+    except Exception as exc:
+        app.state.image_model_status = "error"
+        app.state.image_model_error = f"{type(exc).__name__}: {str(exc)[:500]}"
+        logger.exception("Failed to load image detector")
     yield
 
     app.state.model = None
     app.state.tokenizer = None
     app.state.audio_model = None
     app.state.audio_processor = None
+    app.state.image_model = None
+    app.state.image_processor = None
     if app.state.device.type == "cuda":
         torch.cuda.empty_cache()
     logger.info("Application shutdown complete")
@@ -372,6 +397,83 @@ async def detect_url(req: URLDetectRequest) -> URLDetectResponse:
         reasons=reasons,
     )
 
+class ImageDetectResponse(BaseModel):
+    ai_probability: float
+    is_ai_generated: bool
+    label: str
+    modality: str
+    processing_time_ms: int
+    model_id: str
+    image_width: int
+    image_height: int
+    probabilities: dict[str, float]
+
+
+@app.post("/detect-image", response_model=ImageDetectResponse)
+async def detect_image(request: Request, file: UploadFile = File(...)) -> ImageDetectResponse:
+    started = time.perf_counter()
+    model = request.app.state.image_model
+    processor = request.app.state.image_processor
+    if model is None or processor is None:
+        raise HTTPException(status_code=503, detail="Image detection model is unavailable. Check /health.")
+
+    filename = (file.filename or "").lower()
+    allowed_extensions = (".jpg", ".jpeg", ".png", ".webp")
+    if not filename.endswith(allowed_extensions):
+        raise HTTPException(status_code=415, detail="Unsupported image format. Use JPG, JPEG, PNG, or WEBP.")
+
+    raw = await file.read(IMAGE_MAX_BYTES + 1)
+    if not raw:
+        raise HTTPException(status_code=400, detail="Uploaded image file is empty.")
+    if len(raw) > IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Image file exceeds the 15 MB upload limit.")
+
+    try:
+        with Image.open(io.BytesIO(raw)) as check_image:
+            check_image.verify()
+        with Image.open(io.BytesIO(raw)) as source_image:
+            if source_image.width * source_image.height > IMAGE_MAX_PIXELS:
+                raise ValueError("Image dimensions are too large. Maximum supported pixels: 40 million.")
+            image = ImageOps.exif_transpose(source_image).convert("RGB")
+            image_width, image_height = image.size
+
+        inputs = processor(images=image, return_tensors="pt")
+        inputs = {key: value.to(request.app.state.device) for key, value in inputs.items()}
+        with torch.inference_mode():
+            logits = model(**inputs).logits
+            probabilities_tensor = torch.softmax(logits, dim=-1)[0]
+
+        labels = {int(index): str(label).strip().lower() for index, label in model.config.id2label.items()}
+        ai_index = next((index for index, label in labels.items() if any(term in label for term in ("ai-generated", "ai generated", "fake", "synthetic"))), None)
+        real_index = next((index for index, label in labels.items() if any(term in label for term in ("human", "real", "authentic"))), None)
+        if ai_index is None or real_index is None:
+            raise ValueError(f"Image model labels do not identify both AI and real classes: {labels}")
+
+        ai_probability = float(probabilities_tensor[ai_index].item())
+        real_probability = float(probabilities_tensor[real_index].item())
+        is_ai = ai_probability >= 0.5
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        return ImageDetectResponse(
+            ai_probability=round(ai_probability, 4),
+            is_ai_generated=is_ai,
+            label="AI-Generated Image" if is_ai else "Likely Real Image",
+            modality="image",
+            processing_time_ms=elapsed_ms,
+            model_id=IMAGE_MODEL_ID,
+            image_width=image_width,
+            image_height=image_height,
+            probabilities={"ai": round(ai_probability, 4), "real": round(real_probability, 4)},
+        )
+    except (UnidentifiedImageError, OSError) as exc:
+        raise HTTPException(status_code=400, detail="Image could not be decoded. Upload a valid JPG, PNG, or WEBP image.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Image inference failed")
+        raise HTTPException(status_code=500, detail="Image inference failed. Check server logs for details.") from exc
+    finally:
+        await file.close()
+
 
 class AudioDetectResponse(BaseModel):
     ai_probability: float
@@ -496,6 +598,10 @@ def health_check(request: Request) -> dict[str, str | bool | None]:
         "audio_model_status": request.app.state.audio_model_status,
         "audio_model_id": AUDIO_MODEL_ID,
         "audio_model_error": request.app.state.audio_model_error,
+        "image_model_loaded": request.app.state.image_model is not None,
+        "image_model_status": request.app.state.image_model_status,
+        "image_model_id": IMAGE_MODEL_ID,
+        "image_model_error": request.app.state.image_model_error,
     }
 
 
