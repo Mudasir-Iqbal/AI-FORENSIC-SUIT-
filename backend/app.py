@@ -18,7 +18,7 @@ import torch.nn as nn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
-from transformers import AutoConfig, AutoModel, AutoModelForAudioClassification, AutoProcessor, AutoTokenizer, PreTrainedModel
+from transformers import AutoConfig, AutoFeatureExtractor, AutoModel, AutoModelForAudioClassification, AutoTokenizer, PreTrainedModel
 
 MODEL_ID = os.getenv("TEXT_MODEL_ID", "desklib/ai-text-detector-v1.01")
 AUDIO_MODEL_ID = os.getenv("AUDIO_MODEL_ID", "MelodyMachine/Deepfake-audio-detection-V2")
@@ -108,7 +108,7 @@ async def lifespan(app: FastAPI):
 
     try:
         logger.info("Loading audio detector: %s", AUDIO_MODEL_ID)
-        audio_processor = AutoProcessor.from_pretrained(AUDIO_MODEL_ID)
+        audio_processor = AutoFeatureExtractor.from_pretrained(AUDIO_MODEL_ID)
         audio_model = AutoModelForAudioClassification.from_pretrained(AUDIO_MODEL_ID)
         audio_model.to(app.state.device)
         audio_model.eval()
