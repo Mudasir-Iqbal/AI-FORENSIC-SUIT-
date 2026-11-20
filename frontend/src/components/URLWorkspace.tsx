@@ -37,7 +37,7 @@ export function URLWorkspace({ url, onChangeURL, onAnalyze, isLoading }: URLWork
           className="min-h-[48px] w-full rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-500/60 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
         />
         <p className="text-xs leading-relaxed text-slate-500">
-          Only public HTTP/HTTPS destinations are inspected. Private network and localhost targets are blocked.
+          Only public HTTP/HTTPS destinations are inspected. Private network and localhost targets are blocked. Risk scores use transparent heuristics, not a malware reputation database.
         </p>
       </div>
 
