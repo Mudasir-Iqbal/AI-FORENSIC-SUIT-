@@ -626,32 +626,32 @@ async def video_forensics_stream(file: UploadFile = File(...)):
         loop.call_soon_threadsafe(progress_queue.put_nowait, event)
 
     async def event_stream():
-        yield "data: " + json.dumps({"type": "progress", "step": "Upload received", "status": "completed", "detail": "Upload received; starting technical examination."}) + "\\n\\n"
+        yield "data: " + json.dumps({"type": "progress", "step": "Upload received", "status": "completed", "detail": "Upload received; starting technical examination."}) + "\n\n"
         task = asyncio.create_task(
             asyncio.to_thread(examine_video_bytes, raw, filename, publish_progress)
         )
         while not task.done():
             try:
                 event = await asyncio.wait_for(progress_queue.get(), timeout=0.25)
-                yield "data: " + json.dumps(event) + "\\n\\n"
+                yield "data: " + json.dumps(event) + "\n\n"
             except TimeoutError:
                 continue
 
         while not progress_queue.empty():
             event = progress_queue.get_nowait()
-            yield "data: " + json.dumps(event) + "\\n\\n"
+            yield "data: " + json.dumps(event) + "\n\n"
 
         try:
             evidence = await task
-            yield "data: " + json.dumps({"type": "complete", "result": evidence}) + "\\n\\n"
+            yield "data: " + json.dumps({"type": "complete", "result": evidence}) + "\n\n"
         except VideoExaminationError as exc:
-            yield "data: " + json.dumps({"type": "error", "message": str(exc), "status_code": 400}) + "\\n\\n"
+            yield "data: " + json.dumps({"type": "error", "message": str(exc), "status_code": 400}) + "\n\n"
         except RuntimeError as exc:
             logger.exception("Video forensic streaming dependencies unavailable")
-            yield "data: " + json.dumps({"type": "error", "message": str(exc), "status_code": 503}) + "\\n\\n"
+            yield "data: " + json.dumps({"type": "error", "message": str(exc), "status_code": 503}) + "\n\n"
         except Exception:
             logger.exception("Video forensic streaming failed")
-            yield "data: " + json.dumps({"type": "error", "message": "Video forensic examination failed. Check server logs for details.", "status_code": 500}) + "\\n\\n"
+            yield "data: " + json.dumps({"type": "error", "message": "Video forensic examination failed. Check server logs for details.", "status_code": 500}) + "\n\n"
 
     return StreamingResponse(
         event_stream(),
