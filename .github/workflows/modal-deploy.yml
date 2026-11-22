@@ -40,3 +40,33 @@ jobs:
 
       - name: Deploy FastAPI application
         run: modal deploy backend/modal_app.py
+
+      - name: Verify deployed Modal routes
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          base = "https://mudasir-iqbal--deepguard-api-create-api.us-east.modal.run"
+          for attempt in range(12):
+              try:
+                  with urllib.request.urlopen(base + "/openapi.json", timeout=30) as response:
+                      if response.status != 200:
+                          raise RuntimeError(f"OpenAPI returned HTTP {response.status}")
+                      schema = json.load(response)
+                  paths = schema.get("paths", {})
+                  required = ["/health", "/video-forensics", "/video-forensics/stream"]
+                  missing = [path for path in required if path not in paths]
+                  if missing:
+                      raise RuntimeError(f"Deployed Modal app is missing routes: {missing}")
+                  print("Modal OpenAPI route check passed:")
+                  for path in required:
+                      print(f"  {path}")
+                  break
+              except Exception as exc:
+                  print(f"Modal route check attempt {attempt + 1}/12 failed: {exc}")
+                  if attempt == 11:
+                      raise
+                  time.sleep(10)
+          PY
