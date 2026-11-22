@@ -72,6 +72,13 @@ export default function App() {
         modality: activeModality,
         text: activeModality === 'text' ? textInput : activeModality === 'url' ? urlInput : undefined,
         file: activeModality === 'text' || activeModality === 'url' ? null : mediaFiles[activeModality],
+        onProgress: activeModality === 'video' ? (entry) => {
+          if (requestIdRef.current !== currentRequestId) return;
+          setAnalysisState((previous) => ({
+            ...previous,
+            processingLog: [...(previous.processingLog ?? []), entry],
+          }));
+        } : undefined,
       });
 
       if (requestIdRef.current !== currentRequestId) return;
@@ -80,6 +87,7 @@ export default function App() {
         status: 'success',
         result,
         error: null,
+        processingLog: [],
       });
     } catch (err) {
       if (requestIdRef.current !== currentRequestId) return;
