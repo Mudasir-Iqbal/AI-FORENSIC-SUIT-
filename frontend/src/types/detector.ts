@@ -23,7 +23,7 @@ export interface VideoForensicsEvidence {
     context_scale?: number;
     genD_compatibility: string;
     warning?: string;
-    frames: Array<{ sample_index: number; timestamp_seconds: number; status: string; face_count: number; aligned_crop_sha256: string | null; aligned_crop_size: [number, number] | null }>;
+    frames: Array<{ sample_index: number; timestamp_seconds: number; status: string; face_count: number; bounding_box_xyxy?: [number, number, number, number]; bounding_box_source?: string; landmarks_5_xy?: Array<[number, number]>; landmark_order?: string[]; coordinate_space?: string; aligned_crop_sha256: string | null; aligned_crop_size: [number, number] | null }>;
   };
   experimental_yunet_preprocessing?: {
     status: string;
@@ -42,7 +42,7 @@ export interface VideoForensicsEvidence {
     alignment_geometry?: string;
     genD_compatibility: string;
     warning?: string;
-    frames: Array<{ sample_index: number; timestamp_seconds: number; status: string; face_count: number; detection_confidence?: number | null; aligned_crop_sha256: string | null; aligned_crop_size: [number, number] | null }>;
+    frames: Array<{ sample_index: number; timestamp_seconds: number; status: string; face_count: number; detection_confidence?: number | null; bounding_box_xyxy?: [number, number, number, number]; bounding_box_source?: string; landmarks_5_xy?: Array<[number, number]>; landmark_order?: string[]; coordinate_space?: string; aligned_crop_sha256: string | null; aligned_crop_size: [number, number] | null }>;
   };
   model_input_gate: {
     model_id: string;
