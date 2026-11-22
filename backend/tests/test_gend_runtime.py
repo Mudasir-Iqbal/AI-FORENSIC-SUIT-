@@ -66,3 +66,32 @@ class GenDRuntimeSourceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GenDIntegrationSourceTests(unittest.TestCase):
+    def test_api_uses_worker_and_verifies_upload_hash(self):
+        client = Path("backend/gend_client.py").read_text()
+        self.assertIn("modal.Function.from_name(GEND_APP_NAME, GEND_FUNCTION_NAME)", client)
+        self.assertIn("hashlib.sha256(video_bytes).hexdigest()", client)
+        self.assertIn("source_video_sha256", client)
+
+    def test_api_keeps_verdict_not_assessed_after_model_scores(self):
+        source = Path("backend/app.py").read_text()
+        self.assertIn('"classification_status"] = "not_assessed"', source)
+        self.assertIn('"scores_available_uncalibrated"', source)
+        self.assertIn("await asyncio.to_thread(invoke_gend_inference, raw, filename)", source)
+
+    def test_stream_preserves_intake_if_worker_fails(self):
+        source = Path("backend/app.py").read_text()
+        self.assertIn('"GenD isolated worker"', source)
+        self.assertIn('"worker_unavailable"', source)
+        self.assertIn("intake evidence is preserved", source)
+
+    def test_intake_worker_stages_are_pending_before_remote_inference(self):
+        source = Path("backend/video_forensics.py").read_text()
+        self.assertIn('"GenD model inference", "pending"', source)
+        self.assertIn('"GenD input gate", "pending"', source)
+
+
+if __name__ == "__main__":
+    unittest.main()
