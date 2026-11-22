@@ -131,12 +131,12 @@ def infer_video(video_bytes: bytes, filename: str = "input.mp4") -> dict[str, An
     from detector import get_video_frames_generator, align_face
 
     started = time.perf_counter()
-    model, device, detector = _load_runtime()
+    source_video_sha256 = hashlib.sha256(video_bytes).hexdigest()
 
     with tempfile.TemporaryDirectory(prefix="deepguard-gend-") as temp_dir:
         suffix = Path(filename).suffix.lower()
         if suffix not in {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}:
-            suffix = ".mp4"
+            raise ValueError("Unsupported video extension. Use MP4, MOV, MKV, AVI, WEBM, or M4V.")
         video_path = Path(temp_dir) / ("source" + suffix)
         video_path.write_bytes(video_bytes)
 
@@ -146,14 +146,14 @@ def infer_video(video_bytes: bytes, filename: str = "input.mp4") -> dict[str, An
         except Exception as exc:
             raise ValueError("GenD could not decode the uploaded video with the official PyAV path.") from exc
 
-        if source_frame_count < TARGET_FACE_FRAMES:
+        if source_frame_count < 1:
             return {
                 "status": "insufficient_source_frames",
                 "verdict_status": "not_assessed",
                 "model_id": MODEL_ID,
+                "source_video_sha256": source_video_sha256,
                 "source_frame_count": source_frame_count,
-                "required_target_face_frames": TARGET_FACE_FRAMES,
-                "reason": "Official GenD at_least sampling requires enough source frames to search for 32 face frames.",
+                "reason": "The video decoder did not report any readable source frames.",
             }
         if source_frame_count > MAX_SOURCE_FRAMES:
             raise ValueError(
@@ -161,7 +161,9 @@ def infer_video(video_bytes: bytes, filename: str = "input.mp4") -> dict[str, An
             )
 
         # The official detector.py uses max-spread frame ordering in at_least mode,
-        # then stops after 32 successfully detected/aligned faces.
+        # then stops after 32 successfully detected/aligned faces or exhausts the source.
+        # Load the expensive model only after the upload has passed decoding and size preflight.
+        model, device, detector = _load_runtime()
         frame_generator = get_video_frames_generator(
             str(video_path),
             mask_path=None,
@@ -176,6 +178,8 @@ def infer_video(video_bytes: bytes, filename: str = "input.mp4") -> dict[str, An
             boxes, landmarks = detector.detect(frame)
             if len(boxes) == 0:
                 continue
+            if landmarks is None or len(landmarks) != len(boxes):
+                raise RuntimeError("Official RetinaFace did not return five-point landmarks for its detected faces.")
 
             # Official detector.py selects the largest detected face.
             areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
@@ -221,6 +225,7 @@ def infer_video(video_bytes: bytes, filename: str = "input.mp4") -> dict[str, An
                 "status": "insufficient_detected_faces",
                 "verdict_status": "not_assessed",
                 "model_id": MODEL_ID,
+                "source_video_sha256": source_video_sha256,
                 "source_frame_count": source_frame_count,
                 "detected_face_frames": len(tensors),
                 "minimum_face_frames_for_assessment": MIN_FACE_FRAMES_FOR_ASSESSMENT,
@@ -257,6 +262,8 @@ def infer_video(video_bytes: bytes, filename: str = "input.mp4") -> dict[str, An
         return {
             "status": "official_preprocessing_and_inference_complete",
             "model_id": MODEL_ID,
+            "source_video_sha256": source_video_sha256,
+            "source_frame_count": source_frame_count,
             "model_revision": MODEL_REVISION,
             "model_checkpoint_sha256_verified": MODEL_SHA256,
             "official_detector_repo_commit": DETECTOR_REPO_COMMIT,
