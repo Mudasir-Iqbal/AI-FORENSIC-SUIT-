@@ -11,18 +11,30 @@ import subprocess
 import tempfile
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PIL import Image, ImageFilter, ImageStat
 
 MAX_VIDEO_BYTES = 250 * 1024 * 1024
 MAX_VIDEO_SECONDS = 15 * 60
 MAX_SAMPLED_FRAMES = 120
+GEND_REQUIRED_FACE_FRAMES = 32
+GEND_MODEL_ID = "yermandy/GenD_CLIP_L_14"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"}
 
 
 class VideoExaminationError(ValueError):
     pass
+
+
+def _emit_progress(callback: Callable[[dict[str, str]], None] | None, step: str, status: str, detail: str) -> None:
+    if callback is None:
+        return
+    try:
+        callback({"type": "progress", "step": step, "status": status, "detail": detail})
+    except Exception:
+        # Progress reporting must never interrupt evidence processing.
+        pass
 
 
 def _run_json(command: list[str], timeout: int) -> dict[str, Any]:
@@ -51,7 +63,11 @@ def _fraction(value: str | None) -> float | None:
         return None
 
 
-def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
+def examine_video_bytes(
+    raw: bytes,
+    filename: str,
+    progress_callback: Callable[[dict[str, str]], None] | None = None,
+) -> dict[str, Any]:
     """Inspect a bounded uploaded video and return verifiable technical evidence."""
     suffix = Path(filename or "").suffix.lower()
     if suffix not in ALLOWED_VIDEO_EXTENSIONS:
@@ -62,6 +78,8 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
         raise VideoExaminationError("Uploaded video file is empty.")
     if len(raw) > MAX_VIDEO_BYTES:
         raise VideoExaminationError("Video exceeds the 250 MB upload limit.")
+
+    _emit_progress(progress_callback, "File validation", "completed", "Extension, upload size and file presence validated.")
 
     ffprobe = shutil.which("ffprobe")
     ffmpeg = shutil.which("ffmpeg")
@@ -83,6 +101,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
             ],
             timeout=30,
         )
+        _emit_progress(progress_callback, "Media metadata inspection", "completed", "FFprobe inspected container, streams, duration, codec and dimensions.")
         streams = metadata.get("streams") or []
         video_streams = [stream for stream in streams if stream.get("codec_type") == "video"]
         audio_streams = [stream for stream in streams if stream.get("codec_type") == "audio"]
@@ -105,7 +124,18 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
         if width <= 0 or height <= 0 or width * height > 100_000_000:
             raise VideoExaminationError("Video dimensions are invalid or exceed 100 megapixels.")
 
-        sample_fps = min(1.0, MAX_SAMPLED_FRAMES / duration)
+        source_frame_rate = _fraction(video.get("avg_frame_rate") or video.get("r_frame_rate"))
+        reported_frames = int(video["nb_frames"]) if str(video.get("nb_frames", "")).isdigit() else None
+        estimated_source_frames = reported_frames or (
+            int(round(duration * source_frame_rate)) if source_frame_rate else None
+        )
+        # GenD's published video preprocessing targets at least 32 face frames.
+        # Sample 32 evenly spaced source frames when the source contains enough frames.
+        # Never synthesize duplicate frames to satisfy this requirement.
+        sample_fps = min(
+            GEND_REQUIRED_FACE_FRAMES / duration,
+            source_frame_rate or 1.0,
+        )
         sample_interval = 1.0 / sample_fps
         frame_pattern = os.path.join(frames_dir, "frame_%04d.jpg")
         try:
@@ -125,6 +155,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
             raise VideoExaminationError(f"Video frames could not be extracted: {detail[:300]}")
 
         frame_files = sorted(Path(frames_dir).glob("frame_*.jpg"))
+        _emit_progress(progress_callback, "Frame extraction", "completed", f"Extracted {len(frame_files)} evenly spaced source frames.")
         if not frame_files:
             raise VideoExaminationError("No readable video frames could be extracted.")
 
@@ -194,13 +225,43 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
                 "message": "Fewer usable frames were extracted than expected for this clip duration.",
             })
 
+        _emit_progress(progress_callback, "Visual quality assessment", "completed", f"Computed sharpness, brightness and contrast screening proxies across {len(sampled_frames)} frames.")
+        source_frame_gate_passed = estimated_source_frames is None or estimated_source_frames >= GEND_REQUIRED_FACE_FRAMES
+        sampled_frame_gate_passed = len(sampled_frames) >= GEND_REQUIRED_FACE_FRAMES
+        gend_blocking_reasons = []
+        if not source_frame_gate_passed:
+            gend_blocking_reasons.append(
+                f"Source contains approximately {estimated_source_frames} frames; GenD video preprocessing requires at least {GEND_REQUIRED_FACE_FRAMES} candidate frames."
+            )
+        if not sampled_frame_gate_passed:
+            gend_blocking_reasons.append(
+                f"Only {len(sampled_frames)} distinct sampled frames were extracted; {GEND_REQUIRED_FACE_FRAMES} are required before face screening."
+            )
+        # The official RetinaFace/SCRFD detector weights used by the upstream
+        # pipeline are not bundled here. Do not silently substitute another
+        # detector or claim that model-ready aligned faces exist.
+        gend_blocking_reasons.append(
+            "GenD face detection and five-landmark alignment are not configured. The upstream SCRFD/InsightFace detector weights require a separate licensing and deployment review."
+        )
+        gend_blocking_reasons.append(
+            "GenD runtime and checkpoint are not loaded in this backend; classification is therefore blocked."
+        )
+        gend_input_gate_status = "blocked" if gend_blocking_reasons else "passed"
+
+        _emit_progress(progress_callback, "GenD input gate", "blocked", "; ".join(gend_blocking_reasons))
+        _emit_progress(progress_callback, "Face detection and five-point alignment", "blocked", "Not run: licensed five-landmark detector is not configured.")
+        _emit_progress(progress_callback, "GenD image preprocessing", "not_started", "Waiting for aligned 256 × 256 face crops.")
+        _emit_progress(progress_callback, "GenD model inference", "blocked", "Not run because model-ready crops and isolated runtime are unavailable.")
+
         process_log = [
             {"step": "File validation", "status": "completed", "detail": "Extension, upload size and file presence validated."},
             {"step": "Media metadata inspection", "status": "completed", "detail": "FFprobe inspected container, streams, duration, codec and dimensions."},
-            {"step": "Frame extraction", "status": "completed", "detail": f"Extracted {len(sampled_frames)} sampled frames from the original working copy."},
-            {"step": "Visual quality assessment", "status": "completed", "detail": f"Computed sharpness, brightness and contrast proxies across {len(sampled_frames)} frames."},
-            {"step": "Model preprocessing", "status": "not_started", "detail": "Waiting for the selected detector's exact preprocessing pipeline and face-alignment requirements."},
-            {"step": "Model inference", "status": "not_started", "detail": "No video classification model has been run in this intake endpoint."},
+            {"step": "Frame extraction", "status": "completed", "detail": f"Extracted {len(sampled_frames)} source frames at evenly spaced timestamps."},
+            {"step": "Visual quality assessment", "status": "completed", "detail": f"Computed sharpness, brightness and contrast screening proxies across {len(sampled_frames)} frames."},
+            {"step": "GenD input gate", "status": "blocked" if gend_input_gate_status == "blocked" else "completed", "detail": "; ".join(gend_blocking_reasons) if gend_blocking_reasons else "Input meets configured GenD preflight requirements."},
+            {"step": "Face detection and five-point alignment", "status": "blocked", "detail": "Not run: a licensed and configured five-landmark face detector is required. No substitute detector is silently used."},
+            {"step": "GenD image preprocessing", "status": "not_started", "detail": "Waiting for valid 256 × 256 aligned face crops and the official CLIP image processor."},
+            {"step": "GenD model inference", "status": "blocked", "detail": "Not run because model-ready face crops and the isolated GenD runtime are not available."},
         ]
 
         def stream_summary(stream: dict[str, Any]) -> dict[str, Any]:
@@ -221,7 +282,22 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
         return {
             "examination_status": "evidence_prepared",
             "classification_status": "not_assessed",
-            "classification_note": "Technical intake and quality assessment completed. Model preprocessing and classification are not yet implemented.",
+            "classification_note": "Technical intake completed. GenD preflight is blocked until a licensed five-landmark face detector and isolated GenD runtime are configured.",
+            "model_input_gate": {
+                "model_id": GEND_MODEL_ID,
+                "status": gend_input_gate_status,
+                "minimum_candidate_frames": GEND_REQUIRED_FACE_FRAMES,
+                "estimated_source_frames": estimated_source_frames,
+                "sampled_source_frames": len(sampled_frames),
+                "required_face_crop_size": [256, 256],
+                "face_alignment": "five_landmark_similarity_alignment",
+                "face_context_scale": 1.3,
+                "face_detector_status": "not_configured_license_review_required",
+                "model_runtime_status": "not_loaded",
+                "blocking_reasons": gend_blocking_reasons,
+                "automatic_enhancement_applied": False,
+                "original_file_modified": False,
+            },
             "processing_log": process_log,
             "quality_assessment": {
                 "status": "review_required" if quality_issues else "no_obvious_quality_warning",
@@ -247,7 +323,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
                 "height": height,
                 "display_aspect_ratio": video.get("display_aspect_ratio"),
                 "frame_rate": _fraction(video.get("avg_frame_rate") or video.get("r_frame_rate")),
-                "reported_frame_count": int(video["nb_frames"]) if str(video.get("nb_frames", "")).isdigit() else None,
+                "reported_frame_count": reported_frames,
                 "video_codec": video.get("codec_name"),
                 "pixel_format": video.get("pix_fmt"),
                 "file_format_long_name": fmt.get("format_long_name"),
@@ -259,7 +335,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
             },
             "frame_sampling": {
                 "method": "FFmpeg constant-rate sampling across the clip duration",
-                "target_max_frames": MAX_SAMPLED_FRAMES,
+                "target_max_frames": GEND_REQUIRED_FACE_FRAMES,
                 "sample_interval_seconds": round(sample_interval, 6),
                 "sampled_frame_count": len(sampled_frames),
                 "frame_hashes": sampled_frames,
@@ -279,6 +355,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
             "limitations": [
                 "This stage performs technical intake and preliminary visual-quality screening only; it does not classify authenticity.",
                 "Sharpness, brightness and contrast values are screening proxies, not validated pass/fail thresholds for GenD or another detector.",
+                "GenD classification is blocked until at least 32 candidate frames can be face-detected, five-landmark aligned to 256 × 256 crops, and passed through the official CLIP preprocessing pipeline.",
                 "No deblurring or AI enhancement is applied; enhancement can create or remove details and may alter forensic evidence.",
                 "Sampled frame hashes identify extracted working-copy frames, not the original encoded frame packets.",
                 "The original upload and extracted frames are not persistently retained by this endpoint.",

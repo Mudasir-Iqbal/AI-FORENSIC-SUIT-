@@ -11,6 +11,21 @@ export interface VideoForensicsEvidence {
   classification_status: string;
   classification_note: string;
   processing_log: Array<{ step: string; status: string; detail: string }>;
+  model_input_gate: {
+    model_id: string;
+    status: string;
+    minimum_candidate_frames: number;
+    estimated_source_frames: number | null;
+    sampled_source_frames: number;
+    required_face_crop_size: [number, number];
+    face_alignment: string;
+    face_context_scale: number;
+    face_detector_status: string;
+    model_runtime_status: string;
+    blocking_reasons: string[];
+    automatic_enhancement_applied: boolean;
+    original_file_modified: boolean;
+  };
   quality_assessment: {
     status: string;
     metrics_method: string;
@@ -93,4 +108,5 @@ export interface AnalysisState {
   status: AnalysisStatus;
   result: DetectionResult | null;
   error: string | null;
+  processingLog?: Array<{ step: string; status: string; detail: string }>;
 }
