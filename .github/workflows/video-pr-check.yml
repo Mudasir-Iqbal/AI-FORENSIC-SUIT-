@@ -23,7 +23,7 @@ jobs:
       - name: Install and smoke-test face preprocessing dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install mediapipe==0.10.21 opencv-python-headless==4.10.0.84 numpy==1.26.4
+          pip install mediapipe==0.10.21 numpy==1.26.4
           python -c "import cv2, mediapipe as mp, numpy; assert hasattr(mp, 'solutions') and hasattr(mp.solutions, 'face_mesh'); print('MediaPipe Face Mesh ready', mp.__version__, cv2.__version__, numpy.__version__)"
 
   frontend-build:
