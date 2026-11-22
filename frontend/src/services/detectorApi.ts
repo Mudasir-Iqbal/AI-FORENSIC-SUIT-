@@ -3,6 +3,7 @@ import type {
   DetectionApiResponse,
   DetectionResult,
   Modality,
+  VideoForensicsEvidence,
 } from '../types/detector';
 
 export interface AnalyzeRequest {
@@ -114,6 +115,28 @@ export async function analyzeContent({
 
   const payload = await response.json();
   const processingTimeMs = Math.round(performance.now() - startedAt);
+
+  if (modality === 'video') {
+    const evidence = payload as VideoForensicsEvidence;
+    if (
+      !evidence ||
+      evidence.examination_status !== 'evidence_prepared' ||
+      !evidence.evidence_integrity?.sha256 ||
+      !evidence.video_metadata ||
+      !evidence.frame_sampling?.frame_hashes
+    ) {
+      throw new Error('Video forensic API returned an incomplete evidence package.');
+    }
+    return {
+      ai_probability: null,
+      is_ai_generated: null,
+      label: 'Evidence Prepared · Classification Not Assessed',
+      modality: 'video',
+      processingTimeMs,
+      confidenceLevel: 'Low',
+      videoForensics: evidence,
+    };
+  }
 
   if (modality === 'url') {
     const record = payload as Record<string, unknown>;
