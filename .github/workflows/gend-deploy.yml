@@ -18,10 +18,23 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Validate isolated worker syntax and safety checks
+        run: |
+          python -m py_compile backend/modal_gend_app.py
+          python -m unittest backend.tests.test_gend_runtime -v
+
   deploy:
+    needs: validate
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: github.event_name != "pull_request"
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
