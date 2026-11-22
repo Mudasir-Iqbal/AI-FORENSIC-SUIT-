@@ -321,14 +321,14 @@ def examine_video_bytes(
         process_log = [
             {"step": "File validation", "status": "completed", "detail": "Extension, upload size and file presence validated."},
             {"step": "Media metadata inspection", "status": "completed", "detail": "FFprobe inspected container, streams, duration, codec and dimensions."},
-            {"step": "Frame extraction", "status": "completed", "detail": f"Extracted {len(sampled_frames)} source frames at evenly spaced timestamps."},
+            {"step": "Frame extraction", "status": "completed", "detail": f"Extracted {len(sampled_frames)} sampled working frames, preserving dimensions up to 1920 pixels."},
             {"step": "Visual quality assessment", "status": "completed", "detail": f"Computed sharpness, brightness and contrast screening proxies across {len(sampled_frames)} frames."},
-            {"step": "GenD input gate", "status": "blocked" if gend_input_gate_status == "blocked" else "completed", "detail": "; ".join(gend_blocking_reasons) if gend_blocking_reasons else "Input meets configured GenD preflight requirements."},
             {"step": "Experimental MediaPipe face screening", "status": "completed" if face_preprocessing.get("status") == "experimental_complete" else "blocked", "detail": "MediaPipe screening ran; candidate crops are experimental and not GenD-approved."},
             {"step": "Experimental YuNet face screening", "status": "completed" if yunet_preprocessing.get("status") == "experimental_complete" else "blocked", "detail": f"YuNet aligned {yunet_preprocessing.get('aligned_frames', 0)} candidate crops; MIT-licensed detector, but GenD parity is not validated."},
+            {"step": "GenD input gate", "status": "blocked" if gend_input_gate_status == "blocked" else "completed", "detail": "; ".join(gend_blocking_reasons) if gend_blocking_reasons else "Input meets configured GenD preflight requirements."},
             {"step": "GenD detector compatibility validation", "status": "blocked", "detail": "MediaPipe and YuNet candidates remain quarantined until detector parity and crop equivalence are benchmarked against the official GenD pipeline."},
-            {"step": "GenD image preprocessing", "status": "not_started", "detail": "Waiting for valid 256 × 256 aligned face crops and the official CLIP image processor."},
-            {"step": "GenD model inference", "status": "blocked", "detail": "Not run because model-ready face crops and the isolated GenD runtime are not available."},
+            {"step": "GenD image preprocessing", "status": "not_started", "detail": "Waiting for valid 256 × 256 face crops and the official CLIP image processor."},
+            {"step": "GenD model inference", "status": "blocked", "detail": "Not run because model-ready crops and the isolated GenD runtime are not available."},
         ]
 
         def stream_summary(stream: dict[str, Any]) -> dict[str, Any]:
