@@ -173,6 +173,23 @@ def screen_and_align_yunet_frames(
         eye_points = sorted(points[:2].tolist(), key=lambda point: point[0])
         mouth_points = sorted(points[3:5].tolist(), key=lambda point: point[0])
         five_points = np.asarray(eye_points + [points[2].tolist()] + mouth_points, dtype=np.float32)
+        box_x = float(largest[0]) * face_scale_x
+        box_y = float(largest[1]) * face_scale_y
+        box_w = float(largest[2]) * face_scale_x
+        box_h = float(largest[3]) * face_scale_y
+        face_bbox = [
+            round(max(0.0, min(float(original_width), box_x)), 3),
+            round(max(0.0, min(float(original_height), box_y)), 3),
+            round(max(0.0, min(float(original_width), box_x + box_w)), 3),
+            round(max(0.0, min(float(original_height), box_y + box_h)), 3),
+        ]
+        result.update({
+            "bounding_box_xyxy": face_bbox,
+            "bounding_box_source": "yunet_detector",
+            "landmarks_5_xy": np.round(five_points, 3).tolist(),
+            "landmark_order": ["left_eye", "right_eye", "nose", "left_mouth", "right_mouth"],
+            "coordinate_space": "source_frame_pixels",
+        })
 
         try:
             aligned = _align_face(image, five_points, (256, 256), 1.3)
