@@ -128,8 +128,8 @@ def infer_candidate_crops(crops: list[bytes]) -> dict[str, Any]:
             "crop_sha256": crop_hashes[index],
             "logits": [round(float(value), 7) for value in logit.tolist()],
             "class_probabilities": {
-                "class_0_real": round(float(probability[0]), 7),
-                "class_1_fake": round(float(probability[1]), 7),
+                "class_0": round(float(probability[0]), 7),
+                "class_1": round(float(probability[1]), 7),
             },
         })
 
@@ -138,7 +138,7 @@ def infer_candidate_crops(crops: list[bytes]) -> dict[str, Any]:
         "model_id": MODEL_ID,
         "model_revision": MODEL_REVISION,
         "model_checkpoint_sha256_expected": MODEL_SHA256,
-        "class_mapping": {"0": "real", "1": "fake"},
+        "class_mapping": "unverified; probabilities are exposed by raw class index only",
         "preprocessing_status": "caller_supplied_256x256_candidates_not_official_detector_validated",
         "verdict_status": "not_assessed",
         "device": str(device),
