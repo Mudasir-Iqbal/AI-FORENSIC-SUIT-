@@ -21,6 +21,7 @@ MODEL_SHA256 = "d76f0bdfd74a29fe1b1c1b84a80ac92486993e426878e8c7a3944281fbb96833
 MAX_CROPS = 120
 MAX_CROP_BYTES = 2 * 1024 * 1024
 MAX_BATCH_BYTES = 32 * 1024 * 1024
+INFERENCE_BATCH_SIZE = 8
 
 app = modal.App(APP_NAME)
 image = (
@@ -111,14 +112,26 @@ def infer_candidate_crops(crops: list[bytes]) -> dict[str, Any]:
             tensors.append(model.feature_extractor.preprocess(image))
         crop_hashes.append(hashlib.sha256(raw).hexdigest())
 
-    batch = torch.stack(tensors).to(device)
+    # Bound activation memory for long videos; never send all 120 crops through
+    # the ViT-L/14 backbone in one giant batch.
+    logits_parts = []
+    probability_parts = []
     with torch.inference_mode():
-        logits = model(batch)
-        if logits.ndim != 2 or logits.shape != (len(crops), 2):
-            raise RuntimeError(f"Unexpected GenD output shape: {tuple(logits.shape)}")
-        probabilities = torch.softmax(logits.float(), dim=-1)
-        if not torch.isfinite(probabilities).all():
-            raise RuntimeError("GenD returned non-finite probabilities.")
+        for offset in range(0, len(tensors), INFERENCE_BATCH_SIZE):
+            batch = torch.stack(tensors[offset:offset + INFERENCE_BATCH_SIZE]).to(device)
+            batch_logits = model(batch)
+            if batch_logits.ndim != 2 or batch_logits.shape != (batch.shape[0], 2):
+                raise RuntimeError(
+                    f"Unexpected GenD output shape: {tuple(batch_logits.shape)}"
+                )
+            batch_probabilities = torch.softmax(batch_logits.float(), dim=-1)
+            if not torch.isfinite(batch_probabilities).all():
+                raise RuntimeError("GenD returned non-finite probabilities.")
+            logits_parts.append(batch_logits.cpu())
+            probability_parts.append(batch_probabilities.cpu())
+
+    logits = torch.cat(logits_parts, dim=0)
+    probabilities = torch.cat(probability_parts, dim=0)
 
     elapsed_ms = round((time.perf_counter() - started) * 1000)
     rows = []
@@ -153,11 +166,23 @@ def infer_candidate_crops(crops: list[bytes]) -> dict[str, Any]:
     }
 
 
-@app.function(image=image, cpu=1, memory=1024, timeout=30)
+@app.function(
+    image=image,
+    cpu=8,
+    memory=16384,
+    timeout=900,
+    scaledown_window=300,
+)
 def health() -> dict[str, str]:
+    # Load and verify the real checkpoint/backbone. A shallow "ready" response
+    # would hide missing weights or an incompatible runtime.
+    model, device = _load_model()
     return {
         "service": APP_NAME,
-        "status": "ready_to_load",
+        "status": "model_loaded",
         "model_id": MODEL_ID,
         "model_revision": MODEL_REVISION,
+        "checkpoint_sha256_verified": MODEL_SHA256,
+        "device": str(device),
+        "model_class": type(model).__name__,
     }
