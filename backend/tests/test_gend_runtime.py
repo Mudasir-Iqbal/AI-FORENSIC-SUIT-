@@ -47,6 +47,22 @@ class GenDRuntimeSourceTests(unittest.TestCase):
         self.assertIn("MAX_SOURCE_FRAMES = 1800", source)
         self.assertIn("non-commercial research use", source)
 
+    def test_worker_accepts_short_clips_and_hashes_the_original_upload(self):
+        source = Path("backend/modal_gend_app.py").read_text()
+        self.assertNotIn("if source_frame_count < TARGET_FACE_FRAMES:", source)
+        self.assertIn('source_video_sha256 = hashlib.sha256(video_bytes).hexdigest()', source)
+        self.assertIn("if source_frame_count < 1:", source)
+        self.assertIn("MIN_FACE_FRAMES_FOR_ASSESSMENT = 8", source)
+
+    def test_worker_validates_extension_and_retinaface_landmarks(self):
+        source = Path("backend/modal_gend_app.py").read_text()
+        self.assertIn("Unsupported video extension.", source)
+        self.assertIn("if landmarks is None or len(landmarks) != len(boxes):", source)
+
+    def test_worker_preflights_video_before_loading_large_models(self):
+        source = Path("backend/modal_gend_app.py").read_text()
+        self.assertLess(source.index("source_frame_count = int(props.shape[0])"), source.index("model, device, detector = _load_runtime()"))
+
 
 if __name__ == "__main__":
     unittest.main()
