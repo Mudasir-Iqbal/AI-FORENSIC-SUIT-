@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from backend.gend_client import _validate_worker_result
 
 
 class GenDRuntimeSourceTests(unittest.TestCase):
@@ -62,6 +63,66 @@ class GenDRuntimeSourceTests(unittest.TestCase):
     def test_worker_preflights_video_before_loading_large_models(self):
         source = Path("backend/modal_gend_app.py").read_text()
         self.assertLess(source.index("source_frame_count = int(props.shape[0])"), source.index("model, device, detector = _load_runtime()"))
+
+
+class GenDWorkerResponseValidationTests(unittest.TestCase):
+    def valid_result(self):
+        return {
+            "status": "official_preprocessing_and_inference_complete",
+            "source_video_sha256": "a" * 64,
+            "model_id": "yermandy/GenD_CLIP_L_14",
+            "model_revision": "9413725434bfe93ef069b7b4dcdf817cd83529b3",
+            "detected_face_frames": 8,
+            "video_class_probabilities": {"real": 0.6, "fake": 0.4},
+            "frame_evidence": [{
+                "genD_logits": [0.2, -0.2],
+                "class_probabilities": {"real_class_0": 0.6, "fake_class_1": 0.4},
+                "aligned_crop_sha256": "b" * 64,
+            } for _ in range(8)],
+        }
+
+    def test_accepts_well_formed_worker_evidence(self):
+        result = self.valid_result()
+        self.assertIs(_validate_worker_result(result, "a" * 64), result)
+
+    def test_rejects_mismatched_original_upload_hash(self):
+        with self.assertRaisesRegex(RuntimeError, "SHA-256"):
+            _validate_worker_result(self.valid_result(), "c" * 64)
+
+    def test_rejects_unnormalized_video_probabilities(self):
+        result = self.valid_result()
+        result["video_class_probabilities"] = {"real": 0.6, "fake": 0.6}
+        with self.assertRaisesRegex(RuntimeError, "normalized"):
+            _validate_worker_result(result, "a" * 64)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class GenDIntegrationSourceTests(unittest.TestCase):
+    def test_api_uses_worker_and_verifies_upload_hash(self):
+        client = Path("backend/gend_client.py").read_text()
+        self.assertIn("modal.Function.from_name(GEND_APP_NAME, GEND_FUNCTION_NAME)", client)
+        self.assertIn("hashlib.sha256(video_bytes).hexdigest()", client)
+        self.assertIn("source_video_sha256", client)
+
+    def test_api_keeps_verdict_not_assessed_after_model_scores(self):
+        source = Path("backend/app.py").read_text()
+        self.assertIn('"classification_status"] = "not_assessed"', source)
+        self.assertIn('"scores_available_uncalibrated"', source)
+        self.assertIn("await asyncio.to_thread(invoke_gend_inference, raw, filename)", source)
+
+    def test_stream_preserves_intake_if_worker_fails(self):
+        source = Path("backend/app.py").read_text()
+        self.assertIn('"GenD isolated worker"', source)
+        self.assertIn('"worker_unavailable"', source)
+        self.assertIn("intake evidence is preserved", source)
+
+    def test_intake_worker_stages_are_pending_before_remote_inference(self):
+        source = Path("backend/video_forensics.py").read_text()
+        self.assertIn('"GenD model inference", "pending"', source)
+        self.assertIn('"GenD input gate", "pending"', source)
 
 
 if __name__ == "__main__":

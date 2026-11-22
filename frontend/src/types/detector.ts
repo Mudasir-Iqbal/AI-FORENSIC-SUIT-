@@ -110,6 +110,29 @@ export interface VideoForensicsEvidence {
     persistent_evidence_storage: boolean;
     chain_of_custody_status: string;
   };
+  gend_inference?: {
+    status: string;
+    model_id?: string;
+    model_revision?: string;
+    device?: string;
+    detected_face_frames?: number;
+    target_face_frames?: number;
+    processing_time_ms?: number;
+    source_video_sha256?: string;
+    verdict_status?: string;
+    video_class_probabilities?: { real: number; fake: number };
+    frame_evidence?: Array<{
+      source_frame_index: number;
+      face_detection_confidence: number;
+      genD_logits?: number[];
+      class_probabilities?: { real_class_0: number; fake_class_1: number };
+      aligned_crop_sha256: string;
+    }>;
+    research_only_detector_weight_license?: string;
+    warning?: string;
+    reason?: string;
+  };
+  processing_time_ms?: number;
   limitations: string[];
 }
 
