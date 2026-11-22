@@ -172,6 +172,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    # Permit preview deployments for this Vercel project only. Production and
+    # local origins remain explicitly listed in ALLOWED_ORIGINS above.
+    allow_origin_regex=r"https://ai-forensic-suite-git-[a-z0-9-]+-shikra3\.vercel\.app",
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
