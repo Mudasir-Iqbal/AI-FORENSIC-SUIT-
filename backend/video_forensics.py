@@ -116,7 +116,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
         # Sample 32 evenly spaced source frames when the source contains enough frames.
         # Never synthesize duplicate frames to satisfy this requirement.
         sample_fps = min(
-            GEND_REQUIRED_FRAMES / duration,
+            GEND_REQUIRED_FACE_FRAMES / duration,
             source_frame_rate or 1.0,
         )
         sample_interval = 1.0 / sample_fps
