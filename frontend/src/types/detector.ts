@@ -25,6 +25,25 @@ export interface VideoForensicsEvidence {
     warning?: string;
     frames: Array<{ sample_index: number; timestamp_seconds: number; status: string; face_count: number; aligned_crop_sha256: string | null; aligned_crop_size: [number, number] | null }>;
   };
+  experimental_yunet_preprocessing?: {
+    status: string;
+    detector: string;
+    detector_version?: string;
+    detector_license?: string;
+    model_source?: string;
+    model_sha256?: string;
+    detection_threshold?: number;
+    nms_threshold?: number;
+    detected_frames: number;
+    aligned_frames: number;
+    total_frames: number;
+    crop_size?: [number, number];
+    context_scale?: number;
+    alignment_geometry?: string;
+    genD_compatibility: string;
+    warning?: string;
+    frames: Array<{ sample_index: number; timestamp_seconds: number; status: string; face_count: number; detection_confidence?: number | null; aligned_crop_sha256: string | null; aligned_crop_size: [number, number] | null }>;
+  };
   model_input_gate: {
     model_id: string;
     status: string;
