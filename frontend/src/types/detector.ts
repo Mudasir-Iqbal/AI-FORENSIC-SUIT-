@@ -108,4 +108,5 @@ export interface AnalysisState {
   status: AnalysisStatus;
   result: DetectionResult | null;
   error: string | null;
+  processingLog?: Array<{ step: string; status: string; detail: string }>;
 }
