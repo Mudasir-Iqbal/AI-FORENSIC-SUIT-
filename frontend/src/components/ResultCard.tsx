@@ -73,6 +73,24 @@ export function ResultCard({
                 Evaluating {MODALITY_NAMES[activeModality].toLowerCase()} signatures
               </p>
             </div>
+            {activeModality === 'video' && (state.processingLog?.length ?? 0) > 0 && (
+              <div className="w-full rounded-xl border border-slate-700 bg-slate-950/80 p-3 text-left">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-200">Live Video Processing</p>
+                <ol className="space-y-3">
+                  {state.processingLog?.map((entry, index) => (
+                    <li key={`${entry.step}-${index}`} className="flex gap-3 text-xs">
+                      <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${entry.status === 'completed' ? 'bg-emerald-500/15 text-emerald-300' : entry.status === 'blocked' ? 'bg-amber-500/15 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
+                        {entry.status === 'completed' ? '✓' : entry.status === 'blocked' ? '×' : '·'}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-slate-200">{entry.step}</p>
+                        <p className="mt-1 leading-relaxed text-slate-400">{entry.detail}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
           </div>
         )}
 
