@@ -25,7 +25,6 @@ from pydantic import BaseModel, Field, field_validator
 from PIL import Image, ImageOps, UnidentifiedImageError
 from transformers import AutoConfig, AutoFeatureExtractor, AutoImageProcessor, AutoModel, AutoModelForAudioClassification, AutoModelForImageClassification, AutoTokenizer, PreTrainedModel
 from video_forensics import MAX_VIDEO_BYTES, VideoExaminationError, examine_video_bytes
-from gend_client import invoke_gend_inference
 
 MODEL_ID = os.getenv("TEXT_MODEL_ID", "desklib/ai-text-detector-v1.01")
 AUDIO_MODEL_ID = os.getenv("AUDIO_MODEL_ID", "MelodyMachine/Deepfake-audio-detection-V2")
@@ -586,89 +585,16 @@ async def detect_audio(request: Request, file: UploadFile = File(...)) -> AudioD
         await file.close()
 
 
-def _set_video_processing_step(evidence: dict[str, Any], step_name: str, status: str, detail: str) -> None:
-    for item in evidence.get("processing_log", []):
-        if item.get("step") == step_name:
-            item.update({"status": status, "detail": detail})
-            return
-    evidence.setdefault("processing_log", []).append({"step": step_name, "status": status, "detail": detail})
-
-
-def _attach_gend_result(evidence: dict[str, Any], worker_result: dict[str, Any] | None = None, worker_error: str | None = None) -> dict[str, Any]:
-    if worker_result is not None:
-        evidence["gend_inference"] = worker_result
-        status = worker_result.get("status")
-        count = int(worker_result.get("detected_face_frames") or 0)
-        if status == "official_preprocessing_and_inference_complete":
-            scores = worker_result["video_class_probabilities"]
-            evidence["classification_status"] = "not_assessed"
-            evidence["classification_note"] = "Official GenD inference completed. Probabilities are uncalibrated model outputs; no authenticity verdict is issued."
-            evidence.setdefault("analysis_tracks", {})["face_manipulation"] = "scores_available_uncalibrated"
-            evidence["model_input_gate"] = {
-                **evidence.get("model_input_gate", {}),
-                "model_id": worker_result.get("model_id"),
-                "status": "official_worker_inference_complete",
-                "face_detector_status": "official_gend_upstream_retinaface",
-                "model_runtime_status": "loaded_in_isolated_modal_worker",
-                "blocking_reasons": [],
-                "detected_face_frames": count,
-                "required_face_frames": worker_result.get("target_face_frames"),
-            }
-            _set_video_processing_step(evidence, "GenD input gate", "completed", "Original upload passed preflight in the isolated official GenD worker.")
-            _set_video_processing_step(evidence, "GenD detector compatibility validation", "completed", "Official upstream RetinaFace was used directly. Experimental MediaPipe and YuNet crops were not used.")
-            _set_video_processing_step(evidence, "GenD image preprocessing", "completed", "Official five-landmark alignment and GenD CLIP preprocessing completed.")
-            _set_video_processing_step(evidence, "GenD model inference", "completed", f"Inference completed for {count} face frames; real {scores['real']:.4f}, fake {scores['fake']:.4f}. Uncalibrated scores.")
-            evidence["limitations"] = [x for x in evidence.get("limitations", []) if "GenD classification is blocked until" not in x]
-            evidence["limitations"].append("GenD probabilities are uncalibrated. No binary authenticity verdict is issued pending independent threshold and cross-dataset validation.")
-        else:
-            reason = worker_result.get("reason") or f"GenD worker returned status: {status or 'unknown'}."
-            evidence["classification_status"] = "not_assessed"
-            evidence["classification_note"] = reason
-            evidence.setdefault("analysis_tracks", {})["face_manipulation"] = "not_assessed"
-            evidence["model_input_gate"] = {
-                **evidence.get("model_input_gate", {}),
-                "status": "not_assessed",
-                "face_detector_status": "official_gend_upstream_retinaface",
-                "model_runtime_status": "loaded_in_isolated_modal_worker",
-                "blocking_reasons": [reason],
-            }
-            _set_video_processing_step(evidence, "GenD input gate", "completed", "Original upload passed worker preflight.")
-            _set_video_processing_step(evidence, "GenD detector compatibility validation", "completed", f"Official detector collected {count} valid face frames.")
-            _set_video_processing_step(evidence, "GenD image preprocessing", "completed" if count else "blocked", f"Official preprocessing produced {count} aligned face candidates.")
-            _set_video_processing_step(evidence, "GenD model inference", "blocked", reason)
-    else:
-        reason = worker_error or "The isolated GenD worker did not return a result."
-        evidence["gend_inference"] = {"status": "worker_unavailable", "verdict_status": "not_assessed", "reason": reason}
-        evidence["classification_status"] = "not_assessed"
-        evidence["classification_note"] = "Technical evidence intake completed, but isolated GenD inference did not complete. No classification was issued."
-        evidence.setdefault("analysis_tracks", {})["face_manipulation"] = "not_assessed"
-        evidence["model_input_gate"] = {**evidence.get("model_input_gate", {}), "status": "worker_unavailable", "model_runtime_status": "not_confirmed", "blocking_reasons": [reason]}
-        _set_video_processing_step(evidence, "GenD input gate", "blocked", reason)
-        _set_video_processing_step(evidence, "GenD detector compatibility validation", "not_started", "Official worker did not return detector evidence.")
-        _set_video_processing_step(evidence, "GenD image preprocessing", "not_started", "Official worker did not return preprocessing evidence.")
-        _set_video_processing_step(evidence, "GenD model inference", "blocked", "No GenD inference result was received.")
-    return evidence
-
-
 @app.post("/video-forensics")
 async def video_forensics_intake(file: UploadFile = File(...)) -> dict[str, Any]:
-    """Run technical intake, then official GenD inference in the isolated worker."""
-    started = time.perf_counter()
+    """Prepare technical video evidence without making an authenticity verdict."""
     filename = file.filename or "uploaded_video"
     try:
         raw = await file.read(MAX_VIDEO_BYTES + 1)
         if len(raw) > MAX_VIDEO_BYTES:
             raise HTTPException(status_code=413, detail="Video exceeds the 250 MB upload limit.")
         try:
-            evidence = await asyncio.to_thread(examine_video_bytes, raw, filename)
-            try:
-                result = await asyncio.to_thread(invoke_gend_inference, raw, filename)
-                evidence = _attach_gend_result(evidence, worker_result=result)
-            except Exception as exc:
-                logger.exception("Isolated GenD inference failed; preserving intake evidence")
-                evidence = _attach_gend_result(evidence, worker_error=f"{type(exc).__name__}: {str(exc)[:300]}")
-            evidence["processing_time_ms"] = round((time.perf_counter() - started) * 1000)
-            return evidence
+            return examine_video_bytes(raw, filename)
         except VideoExaminationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except RuntimeError as exc:
@@ -683,46 +609,40 @@ async def video_forensics_intake(file: UploadFile = File(...)) -> dict[str, Any]
 
 @app.post("/video-forensics/stream")
 async def video_forensics_stream(file: UploadFile = File(...)):
-    """Stream technical intake and isolated GenD inference progress."""
-    started = time.perf_counter()
+    """Stream genuine processing-stage updates, then the completed evidence package."""
     filename = file.filename or "uploaded_video"
     try:
         raw = await file.read(MAX_VIDEO_BYTES + 1)
     finally:
         await file.close()
+
     if len(raw) > MAX_VIDEO_BYTES:
         raise HTTPException(status_code=413, detail="Video exceeds the 250 MB upload limit.")
 
     loop = asyncio.get_running_loop()
-    queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    progress_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
     def publish_progress(event: dict[str, str]) -> None:
-        loop.call_soon_threadsafe(queue.put_nowait, event)
+        loop.call_soon_threadsafe(progress_queue.put_nowait, event)
 
     async def event_stream():
         yield "data: " + json.dumps({"type": "progress", "step": "Upload received", "status": "completed", "detail": "Upload received; starting technical examination."}) + "\n\n"
-        task = asyncio.create_task(asyncio.to_thread(examine_video_bytes, raw, filename, publish_progress))
+        task = asyncio.create_task(
+            asyncio.to_thread(examine_video_bytes, raw, filename, publish_progress)
+        )
         while not task.done():
             try:
-                yield "data: " + json.dumps(await asyncio.wait_for(queue.get(), timeout=0.25)) + "\n\n"
+                event = await asyncio.wait_for(progress_queue.get(), timeout=0.25)
+                yield "data: " + json.dumps(event) + "\n\n"
             except TimeoutError:
                 continue
-        while not queue.empty():
-            yield "data: " + json.dumps(queue.get_nowait()) + "\n\n"
+
+        while not progress_queue.empty():
+            event = progress_queue.get_nowait()
+            yield "data: " + json.dumps(event) + "\n\n"
+
         try:
             evidence = await task
-            yield "data: " + json.dumps({"type": "progress", "step": "GenD isolated worker", "status": "running", "detail": "Submitting unchanged original upload to official GenD pipeline."}) + "\n\n"
-            try:
-                result = await asyncio.to_thread(invoke_gend_inference, raw, filename)
-                evidence = _attach_gend_result(evidence, worker_result=result)
-                done = result.get("status") == "official_preprocessing_and_inference_complete"
-                worker_status = "completed" if done else "blocked"
-                worker_detail = f"Official GenD returned {result.get('detected_face_frames', 0)} face frames." if done else result.get("reason", "GenD returned Not Assessed.")
-            except Exception as exc:
-                logger.exception("Isolated GenD streaming inference failed")
-                evidence = _attach_gend_result(evidence, worker_error=f"{type(exc).__name__}: {str(exc)[:300]}")
-                worker_status, worker_detail = "blocked", "GenD worker failed; intake evidence is preserved and classification remains Not Assessed."
-            evidence["processing_time_ms"] = round((time.perf_counter() - started) * 1000)
-            yield "data: " + json.dumps({"type": "progress", "step": "GenD isolated worker", "status": worker_status, "detail": worker_detail}) + "\n\n"
             yield "data: " + json.dumps({"type": "complete", "result": evidence}) + "\n\n"
         except VideoExaminationError as exc:
             yield "data: " + json.dumps({"type": "error", "message": str(exc), "status_code": 400}) + "\n\n"
@@ -733,7 +653,11 @@ async def video_forensics_stream(file: UploadFile = File(...)):
             logger.exception("Video forensic streaming failed")
             yield "data: " + json.dumps({"type": "error", "message": "Video forensic examination failed. Check server logs for details.", "status_code": 500}) + "\n\n"
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/")
@@ -759,9 +683,7 @@ def health_check(request: Request) -> dict[str, str | bool | None]:
         "image_model_error": request.app.state.image_model_error,
         "video_forensics_available": bool(shutil.which("ffmpeg") and shutil.which("ffprobe")),
         "video_forensics_endpoint": "/video-forensics",
-        "video_classification_status": "gend_isolated_worker_integrated_uncalibrated_verdict",
-        "gend_worker_app": "deepguard-gend",
-        "gend_worker_function": "infer_video",
+        "video_classification_status": "not_implemented",
     }
 
 

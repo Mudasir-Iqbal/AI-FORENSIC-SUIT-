@@ -313,10 +313,10 @@ def examine_video_bytes(
         )
         gend_input_gate_status = "blocked" if gend_blocking_reasons else "passed"
 
-        _emit_progress(progress_callback, "GenD input gate", "pending", "Technical intake complete; awaiting original-upload preflight in the isolated GenD worker.")
-        _emit_progress(progress_callback, "GenD detector compatibility validation", "pending", "Official worker uses GenD upstream RetinaFace; experimental detector crops remain quarantined.")
-        _emit_progress(progress_callback, "GenD image preprocessing", "pending", "Awaiting official GenD alignment and CLIP preprocessing.")
-        _emit_progress(progress_callback, "GenD model inference", "pending", "Awaiting isolated GenD inference result.")
+        _emit_progress(progress_callback, "GenD input gate", "blocked", "; ".join(gend_blocking_reasons))
+        _emit_progress(progress_callback, "GenD detector compatibility validation", "blocked", "MediaPipe and YuNet candidates remain quarantined until detector parity and crop equivalence are benchmarked against the official GenD pipeline.")
+        _emit_progress(progress_callback, "GenD image preprocessing", "not_started", "Waiting for aligned 256 × 256 face crops.")
+        _emit_progress(progress_callback, "GenD model inference", "blocked", "Not run because model-ready crops and isolated runtime are unavailable.")
 
         process_log = [
             {"step": "File validation", "status": "completed", "detail": "Extension, upload size and file presence validated."},
@@ -325,10 +325,10 @@ def examine_video_bytes(
             {"step": "Visual quality assessment", "status": "completed", "detail": f"Computed sharpness, brightness and contrast screening proxies across {len(sampled_frames)} frames."},
             {"step": "Experimental MediaPipe face screening", "status": "completed" if face_preprocessing.get("status") == "experimental_complete" else "blocked", "detail": "MediaPipe screening ran; candidate crops are experimental and not GenD-approved."},
             {"step": "Experimental YuNet face screening", "status": "completed" if yunet_preprocessing.get("status") == "experimental_complete" else "blocked", "detail": f"YuNet aligned {yunet_preprocessing.get('aligned_frames', 0)} candidate crops; MIT-licensed detector, but GenD parity is not validated."},
-            {"step": "GenD input gate", "status": "pending", "detail": "Awaiting original-upload preflight in the isolated GenD worker."},
-            {"step": "GenD detector compatibility validation", "status": "pending", "detail": "Official worker uses GenD upstream RetinaFace; experimental crops remain quarantined."},
-            {"step": "GenD image preprocessing", "status": "pending", "detail": "Awaiting official GenD alignment and CLIP preprocessing."},
-            {"step": "GenD model inference", "status": "pending", "detail": "Awaiting isolated GenD inference result."},
+            {"step": "GenD input gate", "status": "blocked" if gend_input_gate_status == "blocked" else "completed", "detail": "; ".join(gend_blocking_reasons) if gend_blocking_reasons else "Input meets configured GenD preflight requirements."},
+            {"step": "GenD detector compatibility validation", "status": "blocked", "detail": "MediaPipe and YuNet candidates remain quarantined until detector parity and crop equivalence are benchmarked against the official GenD pipeline."},
+            {"step": "GenD image preprocessing", "status": "not_started", "detail": "Waiting for valid 256 × 256 face crops and the official CLIP image processor."},
+            {"step": "GenD model inference", "status": "blocked", "detail": "Not run because model-ready crops and the isolated GenD runtime are not available."},
         ]
 
         def stream_summary(stream: dict[str, Any]) -> dict[str, Any]:

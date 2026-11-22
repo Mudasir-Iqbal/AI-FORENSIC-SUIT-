@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Compile backend modules
-        run: python -m py_compile backend/app.py backend/video_forensics.py backend/face_preprocessing.py backend/yunet_preprocessing.py backend/detector_parity_benchmark.py backend/modal_gend_app.py
+        run: python -m py_compile backend/app.py backend/video_forensics.py backend/face_preprocessing.py backend/yunet_preprocessing.py backend/detector_parity_benchmark.py backend/modal_gend_app.py backend/gend_client.py
       - name: Run detector parity benchmark unit tests
         run: python -m unittest discover -s backend/tests -p "test_*.py" -v
       - name: Install and smoke-test face preprocessing dependencies

@@ -375,8 +375,55 @@ export function ResultCard({
                       <li key={index} className="flex gap-2 text-xs leading-relaxed text-amber-100"><span aria-hidden="true">•</span><span>{reason}</span></li>
                     ))}
                   </ul>
-                  <p className="mt-3 text-[11px] leading-relaxed text-slate-400">Original upload remains unchanged. No AI deblurring, generative upscaling or denoising is applied. A blocked gate prevents model inference.</p>
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-400">Original upload remains unchanged. Official GenD inference uses its own upstream RetinaFace detector. Experimental MediaPipe and YuNet crops are not passed to GenD. No AI deblurring, generative upscaling or denoising is applied.</p>
                 </div>
+                {result.videoForensics.gend_inference && (
+                  <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-100">Official GenD Model Evidence</p>
+                      <span className={`rounded px-2 py-1 text-[10px] font-semibold uppercase ${result.videoForensics.gend_inference.status === 'official_preprocessing_and_inference_complete' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-amber-500/10 text-amber-200'}`}>
+                        {result.videoForensics.gend_inference.status.replaceAll('_', ' ')}
+                      </span>
+                    </div>
+                    {result.videoForensics.gend_inference.video_class_probabilities ? (
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        <div className="rounded-lg bg-slate-950/80 p-3">
+                          <p className="text-xs text-slate-400">Real class score</p>
+                          <p className="mt-1 font-mono text-2xl text-emerald-300">{(result.videoForensics.gend_inference.video_class_probabilities.real * 100).toFixed(2)}%</p>
+                        </div>
+                        <div className="rounded-lg bg-slate-950/80 p-3">
+                          <p className="text-xs text-slate-400">Fake class score</p>
+                          <p className="mt-1 font-mono text-2xl text-amber-300">{(result.videoForensics.gend_inference.video_class_probabilities.fake * 100).toFixed(2)}%</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs leading-relaxed text-amber-100">{result.videoForensics.gend_inference.reason ?? 'GenD did not return an assessable score for this clip.'}</p>
+                    )}
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div><p className="text-slate-500">Model</p><p className="break-all text-slate-200">{result.videoForensics.gend_inference.model_id ?? 'GenD'}</p></div>
+                      <div><p className="text-slate-500">Device</p><p className="text-slate-200">{result.videoForensics.gend_inference.device ?? 'N/A'}</p></div>
+                      <div><p className="text-slate-500">Detected face frames</p><p className="font-mono text-slate-200">{result.videoForensics.gend_inference.detected_face_frames ?? 0} / {result.videoForensics.gend_inference.target_face_frames ?? 32}</p></div>
+                      <div><p className="text-slate-500">Inference time</p><p className="font-mono text-slate-200">{result.videoForensics.gend_inference.processing_time_ms ?? 'N/A'} ms</p></div>
+                    </div>
+                    {result.videoForensics.gend_inference.model_revision && <p className="mt-2 break-all font-mono text-[10px] text-slate-500">Pinned revision: {result.videoForensics.gend_inference.model_revision}</p>}
+                    {result.videoForensics.gend_inference.frame_evidence && result.videoForensics.gend_inference.frame_evidence.length > 0 && (
+                      <div className="mt-3 space-y-2 border-t border-slate-700/70 pt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">Per-frame GenD Evidence · First 8</p>
+                        {result.videoForensics.gend_inference.frame_evidence.slice(0, 8).map((frame) => (
+                          <div key={frame.source_frame_index} className="rounded-lg bg-slate-950/70 p-2 text-[10px]">
+                            <div className="flex flex-wrap justify-between gap-2">
+                              <span className="font-medium text-slate-300">Source frame {frame.source_frame_index}</span>
+                              {frame.class_probabilities && <span className="font-mono text-cyan-200">Real {(frame.class_probabilities.real_class_0 * 100).toFixed(1)}% · Fake {(frame.class_probabilities.fake_class_1 * 100).toFixed(1)}%</span>}
+                            </div>
+                            <p className="mt-1 break-all font-mono text-slate-500">Aligned crop SHA-256: {frame.aligned_crop_sha256}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <p className="mt-3 text-[11px] leading-relaxed text-amber-100">These are uncalibrated model scores, not confidence of authenticity or proof. The verdict remains Not Assessed until independent threshold validation.</p>
+                    {result.videoForensics.gend_inference.research_only_detector_weight_license && <p className="mt-2 text-[10px] leading-relaxed text-slate-500">{result.videoForensics.gend_inference.research_only_detector_weight_license}</p>}
+                  </div>
+                )}
                 <div className={`rounded-xl border p-3 ${result.videoForensics.quality_assessment.issues.length ? 'border-amber-500/30 bg-amber-500/5' : 'border-emerald-500/25 bg-emerald-500/5'}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-200">Input Quality Screening</p>
@@ -423,7 +470,7 @@ export function ResultCard({
                   {result.videoForensics.frame_sampling.sampled_frame_count > 8 && <p className="text-xs text-slate-500">Showing first 8 of {result.videoForensics.frame_sampling.sampled_frame_count} sampled frames. Full hashes are included in the API evidence response.</p>}
                 </div>
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-100">
-                  This is technical evidence intake only. AI/deepfake classification has not run. Temporary files are deleted after processing; persistent evidence storage and chain of custody are not established by this endpoint.
+                  {result.videoForensics.gend_inference?.status === 'official_preprocessing_and_inference_complete' ? 'Official GenD face-manipulation inference completed. Its scores remain uncalibrated and no authenticity verdict is issued.' : 'Technical evidence intake completed, but GenD did not produce an assessable inference result. Classification remains Not Assessed.'} Temporary files are deleted after processing; persistent evidence storage and chain of custody are not established by this endpoint.
                 </div>
               </div>
             )}
