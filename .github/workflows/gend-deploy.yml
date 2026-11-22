@@ -27,7 +27,7 @@ jobs:
           python-version: "3.11"
       - name: Validate isolated worker syntax and safety checks
         run: |
-          python -m py_compile backend/modal_gend_app.py
+          python -m py_compile backend/modal_gend_app.py backend/run_gend_inference_test.py
           python -m unittest backend.tests.test_gend_runtime -v
 
   deploy:
