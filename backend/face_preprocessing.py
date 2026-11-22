@@ -132,6 +132,23 @@ def screen_and_align_frames(
                 + mouth_points,
                 dtype=np.float32,
             )
+            mesh_xy = np.asarray(
+                [[point.x * width, point.y * height] for point in points],
+                dtype=np.float32,
+            )
+            mesh_bbox = [
+                round(max(0.0, float(mesh_xy[:, 0].min())), 3),
+                round(max(0.0, float(mesh_xy[:, 1].min())), 3),
+                round(min(float(width), float(mesh_xy[:, 0].max())), 3),
+                round(min(float(height), float(mesh_xy[:, 1].max())), 3),
+            ]
+            result.update({
+                "bounding_box_xyxy": mesh_bbox,
+                "bounding_box_source": "mediapipe_mesh_extent_not_detector_box",
+                "landmarks_5_xy": np.round(five_points, 3).tolist(),
+                "landmark_order": ["left_eye", "right_eye", "nose", "left_mouth", "right_mouth"],
+                "coordinate_space": "source_frame_pixels",
+            })
 
             try:
                 aligned = _align_face(image, five_points, (256, 256), 1.3)
