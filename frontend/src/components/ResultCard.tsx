@@ -270,6 +270,47 @@ export function ResultCard({
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Video Forensic Intake</p>
                   <p className="mt-1 text-xs leading-relaxed text-cyan-200">{result.videoForensics.classification_note}</p>
                 </div>
+                <div className="rounded-xl border border-slate-700 bg-slate-950/80 p-3">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-200">Processing Log</p>
+                  <ol className="space-y-3">
+                    {result.videoForensics.processing_log.map((entry, index) => (
+                      <li key={entry.step} className="flex gap-3 text-xs">
+                        <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${entry.status === 'completed' ? 'bg-emerald-500/15 text-emerald-300' : entry.status === 'error' ? 'bg-rose-500/15 text-rose-300' : 'bg-slate-800 text-slate-400'}`}>
+                          {entry.status === 'completed' ? '✓' : entry.status === 'error' ? '!' : '·'}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-medium text-slate-200">{index + 1}. {entry.step}</span>
+                            <span className={`rounded px-2 py-0.5 text-[10px] uppercase tracking-wide ${entry.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{entry.status.replace('_', ' ')}</span>
+                          </div>
+                          <p className="mt-1 leading-relaxed text-slate-400">{entry.detail}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                <div className={`rounded-xl border p-3 ${result.videoForensics.quality_assessment.issues.length ? 'border-amber-500/30 bg-amber-500/5' : 'border-emerald-500/25 bg-emerald-500/5'}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-200">Input Quality & Model Readiness</p>
+                    <span className="rounded bg-slate-800 px-2 py-1 text-[10px] uppercase text-slate-300">{result.videoForensics.quality_assessment.status.replaceAll('_', ' ')}</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                    <div><p className="text-slate-500">Sharpness*</p><p className="font-mono text-slate-200">{result.videoForensics.quality_assessment.mean_sharpness_proxy}</p></div>
+                    <div><p className="text-slate-500">Brightness</p><p className="font-mono text-slate-200">{result.videoForensics.quality_assessment.mean_brightness}</p></div>
+                    <div><p className="text-slate-500">Contrast</p><p className="font-mono text-slate-200">{result.videoForensics.quality_assessment.mean_contrast}</p></div>
+                  </div>
+                  {result.videoForensics.quality_assessment.issues.length > 0 ? (
+                    <ul className="mt-3 space-y-2">
+                      {result.videoForensics.quality_assessment.issues.map((issue) => (
+                        <li key={issue.code} className="text-xs leading-relaxed text-amber-100">• {issue.message}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-xs text-emerald-200">No obvious blur, exposure or contrast warning was detected by the preliminary screening.</p>
+                  )}
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500">{result.videoForensics.quality_assessment.metrics_method}</p>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-300">{result.videoForensics.quality_assessment.enhancement_note}</p>
+                </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div><p className="text-xs text-slate-400">Duration</p><p className="font-mono text-slate-100">{result.videoForensics.video_metadata.duration_seconds}s</p></div>
                   <div><p className="text-xs text-slate-400">Resolution</p><p className="font-mono text-slate-100">{result.videoForensics.video_metadata.width} × {result.videoForensics.video_metadata.height}</p></div>
