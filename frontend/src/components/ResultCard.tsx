@@ -317,6 +317,18 @@ export function ResultCard({
                       <div><p className="text-slate-500">GenD compatibility</p><p className="text-amber-200">Not validated</p></div>
                     </div>
                     <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{result.videoForensics.experimental_face_preprocessing.warning ?? 'Experimental face crops are temporary and are not passed to GenD.'}</p>
+                    {result.videoForensics.experimental_face_preprocessing.frames.some((frame) => frame.bounding_box_xyxy || frame.landmarks_5_xy) && (
+                      <div className="mt-3 space-y-2 border-t border-slate-700/70 pt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">Geometry Evidence · First 8 Frames</p>
+                        {result.videoForensics.experimental_face_preprocessing.frames.filter((frame) => frame.bounding_box_xyxy || frame.landmarks_5_xy).slice(0, 8).map((frame) => (
+                          <div key={frame.sample_index} className="rounded-lg bg-slate-950/70 p-2 text-[10px]">
+                            <p className="font-medium text-slate-300">Frame {frame.sample_index + 1} · {frame.timestamp_seconds.toFixed(3)}s</p>
+                            <p className="mt-1 break-all font-mono text-slate-400">Box ({frame.bounding_box_source ?? 'unknown'}): {frame.bounding_box_xyxy?.map((value) => value.toFixed(1)).join(', ') ?? 'N/A'}</p>
+                            <p className="mt-1 break-all font-mono text-slate-500">5 landmarks (L-eye, R-eye, nose, L-mouth, R-mouth): {frame.landmarks_5_xy?.map(([x, y]) => x.toFixed(1) + ',' + y.toFixed(1)).join(' · ') ?? 'N/A'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 {result.videoForensics.experimental_yunet_preprocessing && (
@@ -332,6 +344,18 @@ export function ResultCard({
                     </div>
                     {result.videoForensics.experimental_yunet_preprocessing.model_sha256 && <p className="mt-2 break-all font-mono text-[10px] text-slate-500">Model SHA-256: {result.videoForensics.experimental_yunet_preprocessing.model_sha256}</p>}
                     <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{result.videoForensics.experimental_yunet_preprocessing.warning ?? 'YuNet crops are temporary candidates and are not passed to GenD.'}</p>
+                    {result.videoForensics.experimental_yunet_preprocessing.frames.some((frame) => frame.bounding_box_xyxy || frame.landmarks_5_xy) && (
+                      <div className="mt-3 space-y-2 border-t border-slate-700/70 pt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-300">Geometry Evidence · First 8 Frames</p>
+                        {result.videoForensics.experimental_yunet_preprocessing.frames.filter((frame) => frame.bounding_box_xyxy || frame.landmarks_5_xy).slice(0, 8).map((frame) => (
+                          <div key={frame.sample_index} className="rounded-lg bg-slate-950/70 p-2 text-[10px]">
+                            <p className="font-medium text-slate-300">Frame {frame.sample_index + 1} · {frame.timestamp_seconds.toFixed(3)}s</p>
+                            <p className="mt-1 break-all font-mono text-slate-400">Box ({frame.bounding_box_source ?? 'unknown'}): {frame.bounding_box_xyxy?.map((value) => value.toFixed(1)).join(', ') ?? 'N/A'}</p>
+                            <p className="mt-1 break-all font-mono text-slate-500">5 landmarks (L-eye, R-eye, nose, L-mouth, R-mouth): {frame.landmarks_5_xy?.map(([x, y]) => x.toFixed(1) + ',' + y.toFixed(1)).join(' · ') ?? 'N/A'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
