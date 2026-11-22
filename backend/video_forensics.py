@@ -226,6 +226,41 @@ def examine_video_bytes(
             })
 
         _emit_progress(progress_callback, "Visual quality assessment", "completed", f"Computed sharpness, brightness and contrast screening proxies across {len(sampled_frames)} frames.")
+        # Experimental detector path: useful for face coverage and crop inspection,
+        # but intentionally not accepted as GenD-equivalent until benchmarked.
+        try:
+            from face_preprocessing import screen_and_align_frames
+
+            face_preprocessing = screen_and_align_frames(
+                frame_files,
+                Path(temp_dir) / "aligned_faces",
+                sample_interval_seconds=sample_interval,
+            )
+            _emit_progress(
+                progress_callback,
+                "Experimental MediaPipe face screening",
+                "completed",
+                f"Detected faces in {face_preprocessing['detected_frames']} / {len(frame_files)} frames; "
+                f"created {face_preprocessing['aligned_frames']} temporary 256 × 256 candidate crops. "
+                "These crops are quarantined from GenD pending compatibility validation.",
+            )
+        except Exception as exc:
+            face_preprocessing = {
+                "status": "unavailable",
+                "detector": "MediaPipe Face Mesh",
+                "detected_frames": 0,
+                "aligned_frames": 0,
+                "total_frames": len(frame_files),
+                "genD_compatibility": "not_validated",
+                "warning": f"Experimental face preprocessing unavailable: {type(exc).__name__}: {str(exc)[:240]}",
+                "frames": [],
+            }
+            _emit_progress(
+                progress_callback,
+                "Experimental MediaPipe face screening",
+                "blocked",
+                face_preprocessing["warning"],
+            )
         source_frame_gate_passed = estimated_source_frames is None or estimated_source_frames >= GEND_REQUIRED_FACE_FRAMES
         sampled_frame_gate_passed = len(sampled_frames) >= GEND_REQUIRED_FACE_FRAMES
         gend_blocking_reasons = []
@@ -237,11 +272,11 @@ def examine_video_bytes(
             gend_blocking_reasons.append(
                 f"Only {len(sampled_frames)} distinct sampled frames were extracted; {GEND_REQUIRED_FACE_FRAMES} are required before face screening."
             )
-        # The official RetinaFace/SCRFD detector weights used by the upstream
-        # pipeline are not bundled here. Do not silently substitute another
-        # detector or claim that model-ready aligned faces exist.
+        # MediaPipe candidates are retained only as experimental evidence. GenD's
+        # published detector uses its own RetinaFace/SCRFD five-point outputs;
+        # matching crop geometry alone does not establish preprocessing equivalence.
         gend_blocking_reasons.append(
-            "GenD face detection and five-landmark alignment are not configured. The upstream SCRFD/InsightFace detector weights require a separate licensing and deployment review."
+            "Experimental MediaPipe face landmarks and aligned crops are not validated as equivalent to GenD's upstream SCRFD/RetinaFace detector output. Candidate crops are not passed to GenD."
         )
         gend_blocking_reasons.append(
             "GenD runtime and checkpoint are not loaded in this backend; classification is therefore blocked."
@@ -249,7 +284,7 @@ def examine_video_bytes(
         gend_input_gate_status = "blocked" if gend_blocking_reasons else "passed"
 
         _emit_progress(progress_callback, "GenD input gate", "blocked", "; ".join(gend_blocking_reasons))
-        _emit_progress(progress_callback, "Face detection and five-point alignment", "blocked", "Not run: licensed five-landmark detector is not configured.")
+        _emit_progress(progress_callback, "GenD detector compatibility validation", "blocked", "Experimental MediaPipe crops were generated where possible, but they are not accepted as GenD-compatible inputs.")
         _emit_progress(progress_callback, "GenD image preprocessing", "not_started", "Waiting for aligned 256 × 256 face crops.")
         _emit_progress(progress_callback, "GenD model inference", "blocked", "Not run because model-ready crops and isolated runtime are unavailable.")
 
@@ -259,7 +294,8 @@ def examine_video_bytes(
             {"step": "Frame extraction", "status": "completed", "detail": f"Extracted {len(sampled_frames)} source frames at evenly spaced timestamps."},
             {"step": "Visual quality assessment", "status": "completed", "detail": f"Computed sharpness, brightness and contrast screening proxies across {len(sampled_frames)} frames."},
             {"step": "GenD input gate", "status": "blocked" if gend_input_gate_status == "blocked" else "completed", "detail": "; ".join(gend_blocking_reasons) if gend_blocking_reasons else "Input meets configured GenD preflight requirements."},
-            {"step": "Face detection and five-point alignment", "status": "blocked", "detail": "Not run: a licensed and configured five-landmark face detector is required. No substitute detector is silently used."},
+            {"step": "Experimental MediaPipe face screening", "status": "completed" if face_preprocessing.get("status") == "experimental_complete" else "blocked", "detail": "MediaPipe screening ran; candidate crops are experimental and not GenD-approved."},
+            {"step": "GenD detector compatibility validation", "status": "blocked", "detail": "MediaPipe candidate crops remain quarantined until detector and preprocessing equivalence are validated."},
             {"step": "GenD image preprocessing", "status": "not_started", "detail": "Waiting for valid 256 × 256 aligned face crops and the official CLIP image processor."},
             {"step": "GenD model inference", "status": "blocked", "detail": "Not run because model-ready face crops and the isolated GenD runtime are not available."},
         ]
@@ -282,7 +318,7 @@ def examine_video_bytes(
         return {
             "examination_status": "evidence_prepared",
             "classification_status": "not_assessed",
-            "classification_note": "Technical intake completed. GenD preflight is blocked until a licensed five-landmark face detector and isolated GenD runtime are configured.",
+            "classification_note": "Technical intake and experimental MediaPipe face screening completed where possible. GenD classification remains blocked because MediaPipe crops are not validated as equivalent to the official GenD detector pipeline and the isolated GenD runtime is not loaded.",
             "model_input_gate": {
                 "model_id": GEND_MODEL_ID,
                 "status": gend_input_gate_status,
@@ -292,13 +328,14 @@ def examine_video_bytes(
                 "required_face_crop_size": [256, 256],
                 "face_alignment": "five_landmark_similarity_alignment",
                 "face_context_scale": 1.3,
-                "face_detector_status": "not_configured_license_review_required",
+                "face_detector_status": "experimental_mediapipe_not_genD_equivalent" if face_preprocessing.get("status") == "experimental_complete" else "unavailable",
                 "model_runtime_status": "not_loaded",
                 "blocking_reasons": gend_blocking_reasons,
                 "automatic_enhancement_applied": False,
                 "original_file_modified": False,
             },
             "processing_log": process_log,
+            "experimental_face_preprocessing": face_preprocessing,
             "quality_assessment": {
                 "status": "review_required" if quality_issues else "no_obvious_quality_warning",
                 "metrics_method": "PIL edge-response variance and grayscale intensity statistics; screening proxies only, not validated forensic quality scores.",
