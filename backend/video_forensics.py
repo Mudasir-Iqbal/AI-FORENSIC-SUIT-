@@ -13,7 +13,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageFilter, ImageStat
 
 MAX_VIDEO_BYTES = 250 * 1024 * 1024
 MAX_VIDEO_SECONDS = 15 * 60
@@ -129,10 +129,22 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
             raise VideoExaminationError("No readable video frames could be extracted.")
 
         sampled_frames: list[dict[str, Any]] = []
+        sharpness_values: list[float] = []
+        brightness_values: list[float] = []
+        contrast_values: list[float] = []
         for index, frame_path in enumerate(frame_files):
             frame_bytes = frame_path.read_bytes()
             with Image.open(frame_path) as frame:
                 frame_width, frame_height = frame.size
+                grayscale = frame.convert("L")
+                edge_stats = ImageStat.Stat(grayscale.filter(ImageFilter.FIND_EDGES))
+                image_stats = ImageStat.Stat(grayscale)
+                sharpness = round(float(edge_stats.var[0]), 3)
+                brightness = round(float(image_stats.mean[0]), 3)
+                contrast = round(float(image_stats.stddev[0]), 3)
+            sharpness_values.append(sharpness)
+            brightness_values.append(brightness)
+            contrast_values.append(contrast)
             sampled_frames.append(
                 {
                     "sample_index": index,
@@ -140,9 +152,56 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
                     "frame_sha256": hashlib.sha256(frame_bytes).hexdigest(),
                     "width": frame_width,
                     "height": frame_height,
+                    "sharpness_proxy": sharpness,
+                    "brightness_mean": brightness,
+                    "contrast_stddev": contrast,
                     "working_copy_format": "JPEG",
                 }
             )
+
+        mean_sharpness = round(sum(sharpness_values) / len(sharpness_values), 3)
+        mean_brightness = round(sum(brightness_values) / len(brightness_values), 3)
+        mean_contrast = round(sum(contrast_values) / len(contrast_values), 3)
+        quality_issues: list[dict[str, str]] = []
+        if mean_sharpness < 12:
+            quality_issues.append({
+                "code": "LOW_SHARPNESS",
+                "severity": "warning",
+                "message": "Sampled frames appear heavily soft or blurred. Fine facial details may be unreliable.",
+            })
+        if mean_brightness < 35:
+            quality_issues.append({
+                "code": "LOW_BRIGHTNESS",
+                "severity": "warning",
+                "message": "Video is very dark; facial and texture details may be difficult to assess.",
+            })
+        elif mean_brightness > 220:
+            quality_issues.append({
+                "code": "HIGH_BRIGHTNESS",
+                "severity": "warning",
+                "message": "Video is very bright or overexposed; detail may be clipped.",
+            })
+        if mean_contrast < 18:
+            quality_issues.append({
+                "code": "LOW_CONTRAST",
+                "severity": "warning",
+                "message": "Video has low contrast; visual evidence may be limited.",
+            })
+        if len(frame_files) < min(8, max(1, int(duration))):
+            quality_issues.append({
+                "code": "INSUFFICIENT_SAMPLED_FRAMES",
+                "severity": "warning",
+                "message": "Fewer usable frames were extracted than expected for this clip duration.",
+            })
+
+        process_log = [
+            {"step": "File validation", "status": "completed", "detail": "Extension, upload size and file presence validated."},
+            {"step": "Media metadata inspection", "status": "completed", "detail": "FFprobe inspected container, streams, duration, codec and dimensions."},
+            {"step": "Frame extraction", "status": "completed", "detail": f"Extracted {len(sampled_frames)} sampled frames from the original working copy."},
+            {"step": "Visual quality assessment", "status": "completed", "detail": f"Computed sharpness, brightness and contrast proxies across {len(sampled_frames)} frames."},
+            {"step": "Model preprocessing", "status": "not_started", "detail": "Waiting for the selected detector's exact preprocessing pipeline and face-alignment requirements."},
+            {"step": "Model inference", "status": "not_started", "detail": "No video classification model has been run in this intake endpoint."},
+        ]
 
         def stream_summary(stream: dict[str, Any]) -> dict[str, Any]:
             return {
@@ -162,7 +221,18 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
         return {
             "examination_status": "evidence_prepared",
             "classification_status": "not_assessed",
-            "classification_note": "No deepfake or AI-generated-video model has been run in this examination stage.",
+            "classification_note": "Technical intake and quality assessment completed. Model preprocessing and classification are not yet implemented.",
+            "processing_log": process_log,
+            "quality_assessment": {
+                "status": "review_required" if quality_issues else "no_obvious_quality_warning",
+                "metrics_method": "PIL edge-response variance and grayscale intensity statistics; screening proxies only, not validated forensic quality scores.",
+                "mean_sharpness_proxy": mean_sharpness,
+                "mean_brightness": mean_brightness,
+                "mean_contrast": mean_contrast,
+                "issues": quality_issues,
+                "automatic_enhancement_applied": False,
+                "enhancement_note": "No deblurring, super-resolution, denoising or generative enhancement was applied. Such processing can invent or suppress forensic details and must be separately validated before model use.",
+            },
             "evidence_integrity": {
                 "original_filename": Path(filename).name,
                 "file_size_bytes": len(raw),
@@ -207,7 +277,9 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
                 "chain_of_custody_status": "not_established_by_this_endpoint",
             },
             "limitations": [
-                "This stage performs technical intake and frame sampling only; it does not classify authenticity.",
+                "This stage performs technical intake and preliminary visual-quality screening only; it does not classify authenticity.",
+                "Sharpness, brightness and contrast values are screening proxies, not validated pass/fail thresholds for GenD or another detector.",
+                "No deblurring or AI enhancement is applied; enhancement can create or remove details and may alter forensic evidence.",
                 "Sampled frame hashes identify extracted working-copy frames, not the original encoded frame packets.",
                 "The original upload and extracted frames are not persistently retained by this endpoint.",
                 "A SHA-256 hash verifies byte identity, not the truthfulness or origin of the recording.",
