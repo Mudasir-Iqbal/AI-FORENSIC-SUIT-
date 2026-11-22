@@ -10,6 +10,7 @@ export interface AnalyzeRequest {
   modality: Modality;
   text?: string;
   file?: File | null;
+  onProgress?: (entry: { step: string; status: string; detail: string }) => void;
 }
 
 function computeConfidenceLevel(probability: number): 'High' | 'Moderate' | 'Low' {
@@ -62,10 +63,56 @@ async function readApiError(response: Response): Promise<string> {
   return detail;
 }
 
+async function readVideoProgressStream(
+  response: Response,
+  onProgress?: AnalyzeRequest['onProgress'],
+): Promise<VideoForensicsEvidence> {
+  if (!response.body) throw new Error('Video progress stream is unavailable.');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let evidence: VideoForensicsEvidence | null = null;
+
+  const consumeLine = (line: string) => {
+    if (!line.startsWith('data: ')) return;
+    const event = JSON.parse(line.slice(6)) as Record<string, unknown>;
+    if (event.type === 'progress') {
+      onProgress?.({
+        step: String(event.step ?? 'Processing'),
+        status: String(event.status ?? 'in_progress'),
+        detail: String(event.detail ?? ''),
+      });
+    } else if (event.type === 'complete' && event.result && typeof event.result === 'object') {
+      evidence = event.result as VideoForensicsEvidence;
+    } else if (event.type === 'error') {
+      throw new Error(String(event.message ?? 'Video examination failed.'));
+    }
+  };
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split(/\\r?\\n/);
+      buffer = lines.pop() ?? '';
+      for (const line of lines) consumeLine(line);
+      if (done) break;
+    }
+    if (buffer.trim()) consumeLine(buffer.trim());
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!evidence) throw new Error('Video stream ended without a completed evidence package.');
+  return evidence;
+}
+
 export async function analyzeContent({
   modality,
   text,
   file,
+  onProgress,
 }: AnalyzeRequest): Promise<DetectionResult> {
   if (modality === 'text' || modality === 'url') {
     if (!text?.trim()) {
@@ -102,7 +149,10 @@ export async function analyzeContent({
     } else {
       const formData = new FormData();
       formData.append('file', file as File);
-      response = await fetch(endpoint, { method: 'POST', body: formData });
+      const targetEndpoint = modality === 'video'
+        ? `${endpoint.replace(/\\/$/, '')}/stream`
+        : endpoint;
+      response = await fetch(targetEndpoint, { method: 'POST', body: formData });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Network error while reaching the detection API.';
@@ -113,7 +163,9 @@ export async function analyzeContent({
     throw new Error(`Detection endpoint returned an error: ${await readApiError(response)}`);
   }
 
-  const payload = await response.json();
+  const payload = modality === 'video'
+    ? await readVideoProgressStream(response, onProgress)
+    : await response.json();
   const processingTimeMs = Math.round(performance.now() - startedAt);
 
   if (modality === 'video') {
