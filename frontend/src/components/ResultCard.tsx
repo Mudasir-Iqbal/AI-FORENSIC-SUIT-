@@ -275,19 +275,38 @@ export function ResultCard({
                   <ol className="space-y-3">
                     {result.videoForensics.processing_log.map((entry, index) => (
                       <li key={entry.step} className="flex gap-3 text-xs">
-                        <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${entry.status === 'completed' ? 'bg-emerald-500/15 text-emerald-300' : entry.status === 'error' ? 'bg-rose-500/15 text-rose-300' : 'bg-slate-800 text-slate-400'}`}>
-                          {entry.status === 'completed' ? '✓' : entry.status === 'error' ? '!' : '·'}
+                        <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${entry.status === 'completed' ? 'bg-emerald-500/15 text-emerald-300' : entry.status === 'error' ? 'bg-rose-500/15 text-rose-300' : entry.status === 'blocked' ? 'bg-amber-500/15 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
+                          {entry.status === 'completed' ? '✓' : entry.status === 'error' ? '!' : entry.status === 'blocked' ? '×' : '·'}
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className="font-medium text-slate-200">{index + 1}. {entry.step}</span>
-                            <span className={`rounded px-2 py-0.5 text-[10px] uppercase tracking-wide ${entry.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>{entry.status.replace('_', ' ')}</span>
+                            <span className={`rounded px-2 py-0.5 text-[10px] uppercase tracking-wide ${entry.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300' : entry.status === 'blocked' ? 'bg-amber-500/10 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>{entry.status.replace('_', ' ')}</span>
                           </div>
                           <p className="mt-1 leading-relaxed text-slate-400">{entry.detail}</p>
                         </div>
                       </li>
                     ))}
                   </ol>
+                </div>
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-200">GenD Model Input Gate</p>
+                    <span className="rounded bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase text-amber-200">{result.videoForensics.model_input_gate.status}</span>
+                  </div>
+                  <p className="mt-2 break-all text-xs text-slate-400">Model: {result.videoForensics.model_input_gate.model_id}</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div><p className="text-slate-500">Candidate frames</p><p className="font-mono text-slate-200">{result.videoForensics.model_input_gate.sampled_source_frames} / {result.videoForensics.model_input_gate.minimum_candidate_frames}</p></div>
+                    <div><p className="text-slate-500">Required aligned crop</p><p className="font-mono text-slate-200">{result.videoForensics.model_input_gate.required_face_crop_size.join(' × ')}</p></div>
+                    <div><p className="text-slate-500">Face alignment</p><p className="text-slate-200">5 landmarks · scale {result.videoForensics.model_input_gate.face_context_scale}</p></div>
+                    <div><p className="text-slate-500">Runtime</p><p className="text-slate-200">{result.videoForensics.model_input_gate.model_runtime_status.replaceAll('_', ' ')}</p></div>
+                  </div>
+                  <ul className="mt-3 space-y-2">
+                    {result.videoForensics.model_input_gate.blocking_reasons.map((reason, index) => (
+                      <li key={index} className="flex gap-2 text-xs leading-relaxed text-amber-100"><span aria-hidden="true">•</span><span>{reason}</span></li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-400">Original upload remains unchanged. No AI deblurring, generative upscaling or denoising is applied. A blocked gate prevents model inference.</p>
                 </div>
                 <div className={`rounded-xl border p-3 ${result.videoForensics.quality_assessment.issues.length ? 'border-amber-500/30 bg-amber-500/5' : 'border-emerald-500/25 bg-emerald-500/5'}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
