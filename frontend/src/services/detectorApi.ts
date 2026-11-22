@@ -160,7 +160,8 @@ export async function analyzeContent({
         } catch {
           throw new Error('VITE_VIDEO_API_URL must be a valid absolute URL.');
         }
-        const path = parsedEndpoint.pathname.replace(/\\/+$/, '');
+        let path = parsedEndpoint.pathname;
+        while (path.endsWith('/')) path = path.slice(0, -1);
         if (path.endsWith('/video-forensics/stream')) {
           parsedEndpoint.pathname = path;
         } else if (path.endsWith('/video-forensics')) {
