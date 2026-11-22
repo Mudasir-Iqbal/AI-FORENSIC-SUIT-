@@ -59,7 +59,7 @@ image = (
         "git clone https://github.com/yermandy/GenD.git /opt/GenD",
         f"cd /opt/GenD && git checkout {DETECTOR_REPO_COMMIT}",
         "mkdir -p /opt/GenD/weights/models/buffalo_l",
-        f"curl -fL '{DETECTOR_MODEL_URL}' -o /opt/GenD/weights/models/buffalo_l/det_10g.onnx",
+        f"python3 -c \"import urllib.request; urllib.request.urlretrieve('{DETECTOR_MODEL_URL}', '/opt/GenD/weights/models/buffalo_l/det_10g.onnx')\"",
         f"echo '{DETECTOR_MODEL_SHA256}  /opt/GenD/weights/models/buffalo_l/det_10g.onnx' | sha256sum -c -",
     )
     .env({"PYTHONPATH": "/opt/GenD"})
