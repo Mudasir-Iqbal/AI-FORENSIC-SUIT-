@@ -65,6 +65,7 @@ export default function App() {
       status: 'loading',
       result: null,
       error: null,
+      processingLog: [],
     });
 
     try {
@@ -87,7 +88,6 @@ export default function App() {
         status: 'success',
         result,
         error: null,
-        processingLog: [],
       });
     } catch (err) {
       if (requestIdRef.current !== currentRequestId) return;
