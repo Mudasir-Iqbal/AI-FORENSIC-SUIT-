@@ -152,7 +152,7 @@ export function ResultCard({
                       result.is_ai_generated ? 'text-rose-200' : 'text-emerald-200'
                     }`}
                   >
-                    {result.modality === 'video' ? 'Evidence Intake Complete' : result.modality === 'url' ? (result.is_ai_generated ? 'Potentially Suspicious' : 'No Major Indicators') : result.modality === 'audio' ? (result.is_ai_generated ? 'AI-Generated / Fake Audio' : 'Likely Real Audio') : result.modality === 'image' ? (result.is_ai_generated ? 'AI-Generated Image' : 'Likely Real Image') : (result.is_ai_generated ? 'AI Generated' : 'Human / Authentic')}
+                    {result.modality === 'video' ? 'Video analysis completed' : result.modality === 'url' ? (result.is_ai_generated ? 'Potentially Suspicious' : 'No Major Indicators') : result.modality === 'audio' ? (result.is_ai_generated ? 'AI-Generated / Fake Audio' : 'Likely Real Audio') : result.modality === 'image' ? (result.is_ai_generated ? 'AI-Generated Image' : 'Likely Real Image') : (result.is_ai_generated ? 'AI Generated' : 'Human / Authentic')}
                   </p>
                 </div>
               </div>
@@ -173,11 +173,57 @@ export function ResultCard({
                 ) : (
                   <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                 )}
-                <span>{result.modality === 'video' ? 'Not Classified' : result.modality === 'url' ? (result.is_ai_generated ? 'Risk Flagged' : 'Lower Risk') : (result.is_ai_generated ? 'Synthetic' : 'Authentic')}</span>
+                <span>{result.modality === 'video' ? 'Review required' : result.modality === 'url' ? (result.is_ai_generated ? 'Risk Flagged' : 'Lower Risk') : (result.is_ai_generated ? 'Synthetic' : 'Authentic')}</span>
               </span>
             </div>
 
-            {result.ai_probability !== null && (
+            {result.modality === 'video' && result.videoForensics && (
+              <div className="space-y-4 rounded-2xl border border-cyan-400/25 bg-gradient-to-br from-slate-800/90 via-slate-900 to-slate-950 p-4 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="max-w-xl">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">Video analysis report</p>
+                    <h3 className="mt-1 text-xl font-semibold text-white">Here is what we found</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-slate-300">The video was processed and the face-manipulation model completed its analysis. The scores below are model estimates, not a confirmed real-or-fake decision.</p>
+                  </div>
+                  <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-semibold text-amber-200">Authenticity: Not assessed</span>
+                </div>
+                {result.videoForensics.gend_inference?.video_class_probabilities ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-3">
+                        <p className="text-xs text-emerald-200/80">Real-class score</p>
+                        <p className="mt-1 text-3xl font-bold tabular-nums text-emerald-300">{(result.videoForensics.gend_inference.video_class_probabilities.real * 100).toFixed(1)}<span className="text-lg">%</span></p>
+                      </div>
+                      <div className="rounded-xl border border-rose-400/20 bg-rose-400/5 p-3">
+                        <p className="text-xs text-rose-200/80">Fake-class score</p>
+                        <p className="mt-1 text-3xl font-bold tabular-nums text-rose-300">{(result.videoForensics.gend_inference.video_class_probabilities.fake * 100).toFixed(1)}<span className="text-lg">%</span></p>
+                      </div>
+                    </div>
+                    <div className="h-3 overflow-hidden rounded-full bg-slate-700" role="img" aria-label={`Model score distribution: real ${(result.videoForensics.gend_inference.video_class_probabilities.real * 100).toFixed(1)} percent, fake ${(result.videoForensics.gend_inference.video_class_probabilities.fake * 100).toFixed(1)} percent`}>
+                      <div className="flex h-full w-full">
+                        <div className="h-full bg-emerald-400 transition-all" style={{ width: `${result.videoForensics.gend_inference.video_class_probabilities.real * 100}%` }} />
+                        <div className="h-full bg-rose-400 transition-all" style={{ width: `${result.videoForensics.gend_inference.video_class_probabilities.fake * 100}%` }} />
+                      </div>
+                    </div>
+                    <p className="text-xs leading-relaxed text-slate-400">These percentages show how the model distributed its scores between its two classes. They are not the probability that the video is genuinely real or fake.</p>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-sm text-amber-100">{result.videoForensics.gend_inference?.reason ?? 'The video was inspected, but the model did not return usable classification scores.'}</div>
+                )}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg bg-slate-950/70 p-3"><p className="text-xs text-slate-400">Faces analyzed</p><p className="mt-1 text-lg font-semibold text-white">{result.videoForensics.gend_inference?.detected_face_frames ?? 0} <span className="text-xs font-normal text-slate-400">/ {result.videoForensics.gend_inference?.target_face_frames ?? 32} frames</span></p></div>
+                  <div className="rounded-lg bg-slate-950/70 p-3"><p className="text-xs text-slate-400">Video length</p><p className="mt-1 text-lg font-semibold text-white">{result.videoForensics.video_metadata.duration_seconds.toFixed(1)}s</p></div>
+                  <div className="rounded-lg bg-slate-950/70 p-3"><p className="text-xs text-slate-400">Video quality</p><p className="mt-1 text-lg font-semibold text-white">{result.videoForensics.video_metadata.width} × {result.videoForensics.video_metadata.height}</p></div>
+                  <div className="rounded-lg bg-slate-950/70 p-3"><p className="text-xs text-slate-400">Total analysis</p><p className="mt-1 text-lg font-semibold text-white">{(result.processingTimeMs / 1000).toFixed(1)}s</p></div>
+                </div>
+                <div className="flex items-start gap-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden="true" />
+                  <p className="text-xs leading-relaxed text-amber-100">Important: this model has not yet been independently calibrated for a reliable decision threshold. DeepGuard therefore reports the model scores but does not label this video as real or fake.</p>
+                </div>
+              </div>
+            )}
+
+            {result.modality !== 'video' && result.ai_probability !== null && (
             <div className="space-y-2.5">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm font-medium text-slate-300">
@@ -216,7 +262,7 @@ export function ResultCard({
             </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3 border-t border-slate-800/80 pt-4 text-sm">
+            {result.modality !== 'video' && <div className="grid grid-cols-2 gap-3 border-t border-slate-800/80 pt-4 text-sm">
               <div className="space-y-0.5">
                 <p className="text-xs text-slate-400">Modality Analyzed</p>
                 <p className="font-medium text-slate-100">
@@ -241,7 +287,7 @@ export function ResultCard({
                   {result.label}
                 </p>
               </div>
-            </div>
+            </div>}
 
             {result.modality === "image" && (
               <div className="space-y-3 border-t border-slate-800/80 pt-4">
@@ -283,7 +329,13 @@ export function ResultCard({
             )}
 
             {result.modality === 'video' && result.videoForensics && (
-              <div className="space-y-4 border-t border-slate-800/80 pt-4">
+              <details className="group rounded-xl border border-slate-700 bg-slate-950/40">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-sm font-semibold text-slate-100 marker:hidden">
+                  <span>Technical evidence and processing details</span>
+                  <span className="text-xs font-normal text-cyan-300 group-open:hidden">Show details +</span>
+                  <span className="hidden text-xs font-normal text-cyan-300 group-open:inline">Hide details −</span>
+                </summary>
+                <div className="space-y-4 border-t border-slate-800/80 p-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Video Forensic Intake</p>
                   <p className="mt-1 text-xs leading-relaxed text-cyan-200">{result.videoForensics.classification_note}</p>
@@ -472,7 +524,8 @@ export function ResultCard({
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-100">
                   {result.videoForensics.gend_inference?.status === 'official_preprocessing_and_inference_complete' ? 'Official GenD face-manipulation inference completed. Its scores remain uncalibrated and no authenticity verdict is issued.' : 'Technical evidence intake completed, but GenD did not produce an assessable inference result. Classification remains Not Assessed.'} Temporary files are deleted after processing; persistent evidence storage and chain of custody are not established by this endpoint.
                 </div>
-              </div>
+                </div>
+              </details>
             )}
 
             {result.modality === 'url' && (
