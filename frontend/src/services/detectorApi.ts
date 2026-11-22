@@ -123,7 +123,9 @@ export async function analyzeContent({
       evidence.examination_status !== 'evidence_prepared' ||
       !evidence.evidence_integrity?.sha256 ||
       !evidence.video_metadata ||
-      !evidence.frame_sampling?.frame_hashes
+      !evidence.frame_sampling?.frame_hashes ||
+      !evidence.model_input_gate?.model_id ||
+      !Array.isArray(evidence.model_input_gate.blocking_reasons)
     ) {
       throw new Error('Video forensic API returned an incomplete evidence package.');
     }
