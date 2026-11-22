@@ -170,7 +170,7 @@ export function ResultCard({
                     result.is_ai_generated ? 'text-rose-300' : 'text-emerald-300'
                   }`}
                 >
-                  {Math.round(result.ai_probability * 100)}%
+                  {Math.round((result.ai_probability ?? 0) * 100)}%
                 </span>
               </div>
 
@@ -178,7 +178,7 @@ export function ResultCard({
                 role="progressbar"
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-valuenow={Math.round(result.ai_probability * 100)}
+                aria-valuenow={Math.round((result.ai_probability ?? 0) * 100)}
                 aria-label={result.modality === 'url' ? 'URL Risk Score' : 'AI Generation Probability'}
                 className="h-3 w-full overflow-hidden rounded-full bg-slate-800"
               >
@@ -188,7 +188,7 @@ export function ResultCard({
                       ? 'bg-gradient-to-r from-rose-500 to-rose-400'
                       : 'bg-gradient-to-r from-emerald-500 to-cyan-400'
                   }`}
-                  style={{ width: `${Math.round(result.ai_probability * 100)}%` }}
+                  style={{ width: `${Math.round((result.ai_probability ?? 0) * 100)}%` }}
                 />
               </div>
 
