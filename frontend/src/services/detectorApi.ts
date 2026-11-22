@@ -149,9 +149,27 @@ export async function analyzeContent({
     } else {
       const formData = new FormData();
       formData.append('file', file as File);
-      const targetEndpoint = modality === 'video'
-        ? `${endpoint.replace(/\/$/, '')}/stream`
-        : endpoint;
+      let targetEndpoint = endpoint;
+      if (modality === 'video') {
+        // Accept either the documented base route or the full stream route.
+        // Vercel environment variables sometimes contain the /stream suffix;
+        // blindly appending it creates /video-forensics/stream/stream (404).
+        let parsedEndpoint: URL;
+        try {
+          parsedEndpoint = new URL(endpoint);
+        } catch {
+          throw new Error('VITE_VIDEO_API_URL must be a valid absolute URL.');
+        }
+        const path = parsedEndpoint.pathname.replace(/\\/+$/, '');
+        if (path.endsWith('/video-forensics/stream')) {
+          parsedEndpoint.pathname = path;
+        } else if (path.endsWith('/video-forensics')) {
+          parsedEndpoint.pathname = `${path}/stream`;
+        } else {
+          throw new Error('VITE_VIDEO_API_URL must end with /video-forensics or /video-forensics/stream.');
+        }
+        targetEndpoint = parsedEndpoint.toString();
+      }
       response = await fetch(targetEndpoint, { method: 'POST', body: formData });
     }
   } catch (error) {
