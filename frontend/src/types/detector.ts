@@ -72,7 +72,8 @@ export interface DetectionResult extends Omit<DetectionApiResponse, 'ai_probabil
   audioProbabilities?: { fake: number; real: number };
   imageWidth?: number;
   imageHeight?: number;
-  imageProbabilities?: { ai: number; real: number };\n  videoForensics?: VideoForensicsEvidence;
+  imageProbabilities?: { ai: number; real: number };
+  videoForensics?: VideoForensicsEvidence;
 }
 
 export type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error';
