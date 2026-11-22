@@ -10,6 +10,17 @@ export interface VideoForensicsEvidence {
   examination_status: string;
   classification_status: string;
   classification_note: string;
+  processing_log: Array<{ step: string; status: string; detail: string }>;
+  quality_assessment: {
+    status: string;
+    metrics_method: string;
+    mean_sharpness_proxy: number;
+    mean_brightness: number;
+    mean_contrast: number;
+    issues: Array<{ code: string; severity: string; message: string }>;
+    automatic_enhancement_applied: boolean;
+    enhancement_note: string;
+  };
   evidence_integrity: {
     original_filename: string;
     file_size_bytes: number;
