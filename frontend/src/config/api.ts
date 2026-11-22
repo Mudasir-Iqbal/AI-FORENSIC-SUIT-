@@ -13,7 +13,7 @@ const configuredUrls: Record<Modality, string | null> = {
   url: readEnvUrl(import.meta.env.VITE_URL_API_URL) ?? 'https://mudasir-iqbal--deepguard-api-create-api.us-east.modal.run/detect-url',
   image: readEnvUrl(import.meta.env.VITE_IMAGE_API_URL) ?? 'https://mudasir-iqbal--deepguard-api-create-api.us-east.modal.run/detect-image',
   audio: readEnvUrl(import.meta.env.VITE_AUDIO_API_URL) ?? 'https://mudasir-iqbal--deepguard-api-create-api.us-east.modal.run/detect-audio',
-  video: readEnvUrl(import.meta.env.VITE_VIDEO_API_URL),
+  video: readEnvUrl(import.meta.env.VITE_VIDEO_API_URL) ?? 'https://mudasir-iqbal--deepguard-api-create-api.us-east.modal.run/video-forensics',
 };
 
 export const API_ENDPOINTS: Record<Modality, string> = {
