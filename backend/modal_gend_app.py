@@ -25,6 +25,7 @@ MAX_BATCH_BYTES = 32 * 1024 * 1024
 app = modal.App(APP_NAME)
 image = (
     modal.Image.debian_slim(python_version="3.11")
+    .apt_install("git")
     .pip_install(
         "torch==2.8.0",
         "torchvision==0.23.0",
@@ -52,7 +53,18 @@ def _load_model():
     import sys
     sys.path.insert(0, "/opt/GenD")
     import torch
+    from huggingface_hub import hf_hub_download
     from src.hf.modeling_gend import GenD
+
+    checkpoint_path = hf_hub_download(
+        repo_id=MODEL_ID, filename="model.safetensors", revision=MODEL_REVISION
+    )
+    digest = hashlib.sha256()
+    with open(checkpoint_path, "rb") as checkpoint:
+        for chunk in iter(lambda: checkpoint.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != MODEL_SHA256:
+        raise RuntimeError("GenD checkpoint SHA-256 does not match the pinned artifact.")
 
     _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = GenD.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
