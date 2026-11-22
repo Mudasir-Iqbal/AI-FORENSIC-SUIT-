@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PIL import Image, ImageFilter, ImageStat
 
@@ -25,6 +25,16 @@ ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"}
 
 class VideoExaminationError(ValueError):
     pass
+
+
+def _emit_progress(callback: Callable[[dict[str, str]], None] | None, step: str, status: str, detail: str) -> None:
+    if callback is None:
+        return
+    try:
+        callback({"type": "progress", "step": step, "status": status, "detail": detail})
+    except Exception:
+        # Progress reporting must never interrupt evidence processing.
+        pass
 
 
 def _run_json(command: list[str], timeout: int) -> dict[str, Any]:
@@ -53,7 +63,11 @@ def _fraction(value: str | None) -> float | None:
         return None
 
 
-def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
+def examine_video_bytes(
+    raw: bytes,
+    filename: str,
+    progress_callback: Callable[[dict[str, str]], None] | None = None,
+) -> dict[str, Any]:
     """Inspect a bounded uploaded video and return verifiable technical evidence."""
     suffix = Path(filename or "").suffix.lower()
     if suffix not in ALLOWED_VIDEO_EXTENSIONS:
@@ -64,6 +78,8 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
         raise VideoExaminationError("Uploaded video file is empty.")
     if len(raw) > MAX_VIDEO_BYTES:
         raise VideoExaminationError("Video exceeds the 250 MB upload limit.")
+
+    _emit_progress(progress_callback, "File validation", "completed", "Extension, upload size and file presence validated.")
 
     ffprobe = shutil.which("ffprobe")
     ffmpeg = shutil.which("ffmpeg")
@@ -85,6 +101,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
             ],
             timeout=30,
         )
+        _emit_progress(progress_callback, "Media metadata inspection", "completed", "FFprobe inspected container, streams, duration, codec and dimensions.")
         streams = metadata.get("streams") or []
         video_streams = [stream for stream in streams if stream.get("codec_type") == "video"]
         audio_streams = [stream for stream in streams if stream.get("codec_type") == "audio"]
@@ -138,6 +155,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
             raise VideoExaminationError(f"Video frames could not be extracted: {detail[:300]}")
 
         frame_files = sorted(Path(frames_dir).glob("frame_*.jpg"))
+        _emit_progress(progress_callback, "Frame extraction", "completed", f"Extracted {len(frame_files)} evenly spaced source frames.")
         if not frame_files:
             raise VideoExaminationError("No readable video frames could be extracted.")
 
@@ -207,6 +225,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
                 "message": "Fewer usable frames were extracted than expected for this clip duration.",
             })
 
+        _emit_progress(progress_callback, "Visual quality assessment", "completed", f"Computed sharpness, brightness and contrast screening proxies across {len(sampled_frames)} frames.")
         source_frame_gate_passed = estimated_source_frames is None or estimated_source_frames >= GEND_REQUIRED_FACE_FRAMES
         sampled_frame_gate_passed = len(sampled_frames) >= GEND_REQUIRED_FACE_FRAMES
         gend_blocking_reasons = []
@@ -228,6 +247,11 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
             "GenD runtime and checkpoint are not loaded in this backend; classification is therefore blocked."
         )
         gend_input_gate_status = "blocked" if gend_blocking_reasons else "passed"
+
+        _emit_progress(progress_callback, "GenD input gate", "blocked", "; ".join(gend_blocking_reasons))
+        _emit_progress(progress_callback, "Face detection and five-point alignment", "blocked", "Not run: licensed five-landmark detector is not configured.")
+        _emit_progress(progress_callback, "GenD image preprocessing", "not_started", "Waiting for aligned 256 × 256 face crops.")
+        _emit_progress(progress_callback, "GenD model inference", "blocked", "Not run because model-ready crops and isolated runtime are unavailable.")
 
         process_log = [
             {"step": "File validation", "status": "completed", "detail": "Extension, upload size and file presence validated."},
