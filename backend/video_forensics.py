@@ -115,10 +115,9 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
         # GenD's published video preprocessing targets at least 32 face frames.
         # Sample 32 evenly spaced source frames when the source contains enough frames.
         # Never synthesize duplicate frames to satisfy this requirement.
-        sample_fps = (
-            min(GEND_REQUIRED_FACE_FRAMES / duration, source_frame_rate)
-            if source_frame_rate and estimated_source_frames and estimated_source_frames >= GEND_REQUIRED_FACE_FRAMES
-            else min(GEND_REQUIRED_FACE_FRAMES / duration, MAX_SAMPLED_FRAMES / duration)
+        sample_fps = min(
+            GEND_REQUIRED_FRAMES / duration,
+            source_frame_rate or 1.0,
         )
         sample_interval = 1.0 / sample_fps
         frame_pattern = os.path.join(frames_dir, "frame_%04d.jpg")
