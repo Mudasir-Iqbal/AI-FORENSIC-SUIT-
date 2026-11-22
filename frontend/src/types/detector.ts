@@ -11,6 +11,20 @@ export interface VideoForensicsEvidence {
   classification_status: string;
   classification_note: string;
   processing_log: Array<{ step: string; status: string; detail: string }>;
+  experimental_face_preprocessing?: {
+    status: string;
+    detector: string;
+    detector_version?: string;
+    detector_license?: string;
+    detected_frames: number;
+    aligned_frames: number;
+    total_frames: number;
+    crop_size?: [number, number];
+    context_scale?: number;
+    genD_compatibility: string;
+    warning?: string;
+    frames: Array<{ sample_index: number; timestamp_seconds: number; status: string; face_count: number; aligned_crop_sha256: string | null; aligned_crop_size: [number, number] | null }>;
+  };
   model_input_gate: {
     model_id: string;
     status: string;
