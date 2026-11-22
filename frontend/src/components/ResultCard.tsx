@@ -291,7 +291,7 @@ export function ResultCard({
                 </div>
                 <div className={`rounded-xl border p-3 ${result.videoForensics.quality_assessment.issues.length ? 'border-amber-500/30 bg-amber-500/5' : 'border-emerald-500/25 bg-emerald-500/5'}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-200">Input Quality & Model Readiness</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-200">Input Quality Screening</p>
                     <span className="rounded bg-slate-800 px-2 py-1 text-[10px] uppercase text-slate-300">{result.videoForensics.quality_assessment.status.replaceAll('_', ' ')}</span>
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
@@ -308,7 +308,7 @@ export function ResultCard({
                   ) : (
                     <p className="mt-3 text-xs text-emerald-200">No obvious blur, exposure or contrast warning was detected by the preliminary screening.</p>
                   )}
-                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500">{result.videoForensics.quality_assessment.metrics_method}</p>
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500">{result.videoForensics.quality_assessment.metrics_method} These screening values do not certify that the GenD model requirements are met.</p>
                   <p className="mt-2 text-xs leading-relaxed text-slate-300">{result.videoForensics.quality_assessment.enhancement_note}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
