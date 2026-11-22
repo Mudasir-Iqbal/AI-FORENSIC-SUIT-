@@ -22,6 +22,9 @@ class GenDRuntimeSourceTests(unittest.TestCase):
         self.assertIn("MAX_CROPS = 120", source)
         self.assertIn("MAX_BATCH_BYTES = 32 * 1024 * 1024", source)
         self.assertIn("MAX_CROP_BYTES = 2 * 1024 * 1024", source)
+        self.assertIn("INFERENCE_BATCH_SIZE = 8", source)
+        self.assertIn('"status": "model_loaded"', source)
+        self.assertIn("checkpoint_sha256_verified", source)
 
 
 if __name__ == "__main__":
