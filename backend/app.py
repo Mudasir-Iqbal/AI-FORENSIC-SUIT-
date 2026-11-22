@@ -1,4 +1,6 @@
+import asyncio
 import ipaddress
+import json
 import io
 import logging
 import os
@@ -18,6 +20,7 @@ import torch
 import torch.nn as nn
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from PIL import Image, ImageOps, UnidentifiedImageError
 from transformers import AutoConfig, AutoFeatureExtractor, AutoImageProcessor, AutoModel, AutoModelForAudioClassification, AutoModelForImageClassification, AutoTokenizer, PreTrainedModel
@@ -602,6 +605,59 @@ async def video_forensics_intake(file: UploadFile = File(...)) -> dict[str, Any]
             raise HTTPException(status_code=500, detail="Video forensic intake failed. Check server logs for details.") from exc
     finally:
         await file.close()
+
+
+@app.post("/video-forensics/stream")
+async def video_forensics_stream(file: UploadFile = File(...)):
+    """Stream genuine processing-stage updates, then the completed evidence package."""
+    filename = file.filename or "uploaded_video"
+    try:
+        raw = await file.read(MAX_VIDEO_BYTES + 1)
+    finally:
+        await file.close()
+
+    if len(raw) > MAX_VIDEO_BYTES:
+        raise HTTPException(status_code=413, detail="Video exceeds the 250 MB upload limit.")
+
+    loop = asyncio.get_running_loop()
+    progress_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    def publish_progress(event: dict[str, str]) -> None:
+        loop.call_soon_threadsafe(progress_queue.put_nowait, event)
+
+    async def event_stream():
+        yield "data: " + json.dumps({"type": "progress", "step": "Upload received", "status": "completed", "detail": "Upload received; starting technical examination."}) + "\\n\\n"
+        task = asyncio.create_task(
+            asyncio.to_thread(examine_video_bytes, raw, filename, publish_progress)
+        )
+        while not task.done():
+            try:
+                event = await asyncio.wait_for(progress_queue.get(), timeout=0.25)
+                yield "data: " + json.dumps(event) + "\\n\\n"
+            except TimeoutError:
+                continue
+
+        while not progress_queue.empty():
+            event = progress_queue.get_nowait()
+            yield "data: " + json.dumps(event) + "\\n\\n"
+
+        try:
+            evidence = await task
+            yield "data: " + json.dumps({"type": "complete", "result": evidence}) + "\\n\\n"
+        except VideoExaminationError as exc:
+            yield "data: " + json.dumps({"type": "error", "message": str(exc), "status_code": 400}) + "\\n\\n"
+        except RuntimeError as exc:
+            logger.exception("Video forensic streaming dependencies unavailable")
+            yield "data: " + json.dumps({"type": "error", "message": str(exc), "status_code": 503}) + "\\n\\n"
+        except Exception:
+            logger.exception("Video forensic streaming failed")
+            yield "data: " + json.dumps({"type": "error", "message": "Video forensic examination failed. Check server logs for details.", "status_code": 500}) + "\\n\\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/")
