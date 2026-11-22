@@ -349,7 +349,7 @@ def examine_video_bytes(
         return {
             "examination_status": "evidence_prepared",
             "classification_status": "not_assessed",
-            "classification_note": "Technical intake and experimental MediaPipe face screening completed where possible. GenD classification remains blocked because MediaPipe crops are not validated as equivalent to the official GenD detector pipeline and the isolated GenD runtime is not loaded.",
+            "classification_note": "Technical intake and experimental MediaPipe and YuNet face screening completed where possible. Neither experimental detector has been validated as equivalent to GenD upstream preprocessing, and the isolated GenD runtime is not loaded.",
             "model_input_gate": {
                 "model_id": GEND_MODEL_ID,
                 "status": gend_input_gate_status,
@@ -366,7 +366,8 @@ def examine_video_bytes(
                 "original_file_modified": False,
             },
             "processing_log": process_log,
-            "experimental_face_preprocessing": face_preprocessing,\n            "experimental_yunet_preprocessing": yunet_preprocessing,
+            "experimental_face_preprocessing": face_preprocessing,
+            "experimental_yunet_preprocessing": yunet_preprocessing,
             "quality_assessment": {
                 "status": "review_required" if quality_issues else "no_obvious_quality_warning",
                 "metrics_method": "PIL edge-response variance and grayscale intensity statistics; screening proxies only, not validated forensic quality scores.",
@@ -423,7 +424,7 @@ def examine_video_bytes(
             "limitations": [
                 "This stage performs technical intake and preliminary visual-quality screening only; it does not classify authenticity.",
                 "Sharpness, brightness and contrast values are screening proxies, not validated pass/fail thresholds for GenD or another detector.",
-                "GenD classification is blocked until at least 32 candidate frames can be face-detected, five-landmark aligned to 256 × 256 crops, and passed through the official CLIP preprocessing pipeline.",
+                "GenD classification is blocked until detector parity, five-landmark crop equivalence, and the official CLIP preprocessing pipeline are validated; the isolated model runtime must also be loaded.",
                 "No deblurring or AI enhancement is applied; enhancement can create or remove details and may alter forensic evidence.",
                 "Sampled frame hashes identify extracted working-copy frames, not the original encoded frame packets.",
                 "The original upload and extracted frames are not persistently retained by this endpoint.",
