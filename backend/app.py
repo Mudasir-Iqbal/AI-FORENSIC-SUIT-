@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from PIL import Image, ImageOps, UnidentifiedImageError
 from transformers import AutoConfig, AutoFeatureExtractor, AutoImageProcessor, AutoModel, AutoModelForAudioClassification, AutoModelForImageClassification, AutoTokenizer, PreTrainedModel
+from video_forensics import MAX_VIDEO_BYTES, VideoExaminationError, examine_video_bytes
 
 MODEL_ID = os.getenv("TEXT_MODEL_ID", "desklib/ai-text-detector-v1.01")
 AUDIO_MODEL_ID = os.getenv("AUDIO_MODEL_ID", "MelodyMachine/Deepfake-audio-detection-V2")
@@ -581,6 +582,28 @@ async def detect_audio(request: Request, file: UploadFile = File(...)) -> AudioD
         await file.close()
 
 
+@app.post("/video-forensics")
+async def video_forensics_intake(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Prepare technical video evidence without making an authenticity verdict."""
+    filename = file.filename or "uploaded_video"
+    try:
+        raw = await file.read(MAX_VIDEO_BYTES + 1)
+        if len(raw) > MAX_VIDEO_BYTES:
+            raise HTTPException(status_code=413, detail="Video exceeds the 250 MB upload limit.")
+        try:
+            return examine_video_bytes(raw, filename)
+        except VideoExaminationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            logger.exception("Video forensic dependencies unavailable")
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception("Video forensic intake failed")
+            raise HTTPException(status_code=500, detail="Video forensic intake failed. Check server logs for details.") from exc
+    finally:
+        await file.close()
+
+
 @app.get("/")
 def root() -> dict[str, str]:
     return {"service": "DeepGuard Backend API", "docs": "/docs"}
@@ -602,6 +625,9 @@ def health_check(request: Request) -> dict[str, str | bool | None]:
         "image_model_status": request.app.state.image_model_status,
         "image_model_id": IMAGE_MODEL_ID,
         "image_model_error": request.app.state.image_model_error,
+        "video_forensics_available": bool(shutil.which("ffmpeg") and shutil.which("ffprobe")),
+        "video_forensics_endpoint": "/video-forensics",
+        "video_classification_status": "not_implemented",
     }
 
 
