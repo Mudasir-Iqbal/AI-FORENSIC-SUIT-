@@ -40,7 +40,7 @@ ALIGNMENT_SCALE = 1.3
 app = modal.App(APP_NAME)
 image = (
     modal.Image.debian_slim(python_version="3.11")
-    .apt_install("git", "ffmpeg")
+    .apt_install("git", "ffmpeg", "curl", "ca-certificates")
     .pip_install(
         "torch==2.8.0",
         "torchvision==0.23.0",
