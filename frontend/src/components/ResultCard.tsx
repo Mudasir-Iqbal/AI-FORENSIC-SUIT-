@@ -287,7 +287,7 @@ export function ResultCard({
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Sampled Frame Evidence</p>
                   {result.videoForensics.frame_sampling.frame_hashes.slice(0, 8).map((frame) => (
                     <div key={frame.sample_index} className="rounded-lg border border-slate-800 bg-slate-950/70 p-2">
-                      <div className="flex justify-between gap-2 text-xs text-slate-300"><span>Frame {frame.sample_index + 1}</span><span>{frame.timestamp_seconds}s</span></div>
+                      <div className="flex items-center justify-between gap-3 text-xs"><span className="font-medium text-slate-200">Frame #{frame.sample_index + 1}</span><span className="rounded bg-slate-800 px-2 py-1 font-mono tabular-nums text-cyan-200">Timestamp: {frame.timestamp_seconds.toFixed(3)} s</span></div>
                       <p className="mt-1 break-all font-mono text-[10px] text-slate-500">{frame.frame_sha256}</p>
                     </div>
                   ))}
