@@ -149,7 +149,7 @@ def examine_video_bytes(raw: bytes, filename: str) -> dict[str, Any]:
                 "codec": stream.get("codec_name"),
                 "codec_long_name": stream.get("codec_long_name"),
                 "profile": stream.get("profile"),
-                "sample_rate": int(stream["sample_rate"]) if stream.get("sample_rate", "").isdigit() else None,
+                "sample_rate": int(stream["sample_rate"]) if str(stream.get("sample_rate") or "").isdigit() else None,
                 "channels": stream.get("channels"),
                 "pixel_format": stream.get("pix_fmt"),
                 "width": stream.get("width"),
