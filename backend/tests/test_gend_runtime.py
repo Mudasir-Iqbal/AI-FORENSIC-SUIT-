@@ -13,8 +13,9 @@ class GenDRuntimeSourceTests(unittest.TestCase):
         source = Path("backend/modal_gend_app.py").read_text()
         self.assertIn('"verdict_status": "not_assessed"', source)
         self.assertIn("not_official_detector_validated", source)
-        self.assertIn("class_0_real", source)
-        self.assertIn("class_1_fake", source)
+        self.assertIn('"class_0"', source)
+        self.assertIn('"class_1"', source)
+        self.assertIn("unverified", source)
 
     def test_worker_has_bounded_inputs(self):
         source = Path("backend/modal_gend_app.py").read_text()
