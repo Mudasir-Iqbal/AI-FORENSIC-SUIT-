@@ -38,7 +38,6 @@ jobs:
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-      GEND_MODEL_REVISION: main
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -54,3 +53,5 @@ jobs:
           pip install modal
       - name: Deploy isolated GenD worker
         run: modal deploy backend/modal_gend_app.py
+      - name: Load GenD model and official RetinaFace detector
+        run: modal run backend/modal_gend_app.py::health
