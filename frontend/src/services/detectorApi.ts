@@ -94,7 +94,7 @@ async function readVideoProgressStream(
     while (true) {
       const { value, done } = await reader.read();
       buffer += decoder.decode(value, { stream: !done });
-      const lines = buffer.split(/\\r?\\n/);
+      const lines = buffer.split(/\r?\n/);
       buffer = lines.pop() ?? '';
       for (const line of lines) consumeLine(line);
       if (done) break;
@@ -150,7 +150,7 @@ export async function analyzeContent({
       const formData = new FormData();
       formData.append('file', file as File);
       const targetEndpoint = modality === 'video'
-        ? `${endpoint.replace(/\\/$/, '')}/stream`
+        ? `${endpoint.replace(/\/$/, '')}/stream`
         : endpoint;
       response = await fetch(targetEndpoint, { method: 'POST', body: formData });
     }
