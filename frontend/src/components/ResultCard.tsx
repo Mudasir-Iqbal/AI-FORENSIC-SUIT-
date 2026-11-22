@@ -307,6 +307,18 @@ export function ResultCard({
                     ))}
                   </ol>
                 </div>
+                {result.videoForensics.experimental_face_preprocessing && (
+                  <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-200">Experimental Face Screening</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div><p className="text-slate-500">Detector</p><p className="text-slate-200">{result.videoForensics.experimental_face_preprocessing.detector}</p></div>
+                      <div><p className="text-slate-500">Detected frames</p><p className="font-mono text-slate-200">{result.videoForensics.experimental_face_preprocessing.detected_frames} / {result.videoForensics.experimental_face_preprocessing.total_frames}</p></div>
+                      <div><p className="text-slate-500">Aligned candidates</p><p className="font-mono text-slate-200">{result.videoForensics.experimental_face_preprocessing.aligned_frames}</p></div>
+                      <div><p className="text-slate-500">GenD compatibility</p><p className="text-amber-200">Not validated</p></div>
+                    </div>
+                    <p className="mt-3 text-[11px] leading-relaxed text-slate-400">{result.videoForensics.experimental_face_preprocessing.warning ?? 'Experimental face crops are temporary and are not passed to GenD.'}</p>
+                  </div>
+                )}
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-200">GenD Model Input Gate</p>
